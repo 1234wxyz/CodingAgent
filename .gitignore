@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.claude/
+.env
+trajectories/*.jsonl
+.tasks/
+.transcripts/
