@@ -6,7 +6,7 @@
 
 核心只需要稳定跑通这条链路：
 
-`run -> step -> query -> execute -> append history -> save trajectory`
+`run -> step -> query -> dispatch tool calls -> append history -> save trajectory`
 
 ## 先看哪里
 
@@ -15,6 +15,7 @@
 - `mini-swe-agent/src/minisweagent/agents/default.py`
 - `overall.md` 里 `agent/core.py` 的位置说明
 - `day0.md`，了解 `models.py` 对外暴露什么接口
+- `learn-claude-code/agents/s01_agent_loop.py`（可选，理解 agent loop 的教学原理，但不要照搬它的实现风格）
 
 如果只看一个参考文件，就看 `default.py`。
 
@@ -26,7 +27,7 @@
 - 线性消息历史
 - 异常式控制流
 - 每步保存 trajectory
-- loop 与 environment / model 解耦
+- loop 与工具执行层 / model 解耦
 
 ## 边界
 
@@ -34,14 +35,14 @@
 
 - 保存 `messages`
 - 调用模型
-- 把模型输出交给执行层
+- 从模型输出里提取工具调用并交给执行层
 - 把 observation / exit 写回历史
 - 保存 trajectory
 
 `core.py` 不应该负责：
 
 - 具体工具实现
-- tool registry
+- 工具注册逻辑本身（但可以通过 `registry.py` 查找工具）
 - 模型厂商适配
 - prompt 资产管理
 - memory / planner / task graph
@@ -71,9 +72,11 @@
 只要求外部关系，不要求你照抄实现：
 
 - `model.query(messages) -> assistant_message`
-- `env.execute(assistant_message) -> observation_messages`
+- `assistant_message -> tool_calls`
+- `registry.get(tool_name).execute(arguments) -> observation`
+- `trajectory.save(messages, path)` → 每步追加 JSONL，异常时也保存只要求行为，不要求签名。
 
-只要这两个边界稳定，内部实现可自由调整。
+只要这边界稳定，内部实现可自由调整。
 
 ## 输出结果应满足
 
@@ -84,7 +87,7 @@
 
 ## 验收标准
 
-- mock model + mock env 可以完整跑通
+- mock model + mock registry / tool executor 可以完整跑通
 - `messages` 是单一线性历史
 - 格式错误不会悄悄吞掉
 - 退出状态能落到 trajectory

@@ -2,7 +2,7 @@
 
 ## 目标
 
-实现一个轻量的模型适配层，给 `core.py` 提供统一的 `query(messages)` 接口。
+实现一个轻量的模型适配层，给 `core.py` 提供统一的 `query(messages)` 主调用接口。
 
 当前阶段只需要支持：
 
@@ -27,6 +27,7 @@
 - 向上暴露一个稳定的 `query(messages)` 接口
 - 把 usage / cost 放进返回结果
 - 在模型层处理厂商响应格式差异
+- 参考 mini-swe-agent：主 agent 只依赖 `model.query(messages)`，不要过早把模型层扩成复杂 orchestrator API
 
 ## 边界
 
@@ -45,6 +46,12 @@
 - registry
 - fallback / router / 多模型编排
 - streaming
+
+## 下游依赖
+Day 1 的 `core.py` 会通过 `model.query(messages)` 调用你。
+请确保这个主调用关系稳定后再进入 Day 1。
+如果 Day 2 需要 tool schema，优先通过模型初始化、对象状态或 agent 装配阶段接入；
+不要为了后续天数，提前把这里强行改成 `query(messages, tool_schemas)`。
 
 ## 对 Claude 的要求
 
