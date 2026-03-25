@@ -16,6 +16,12 @@
 **analyze.py：**
 - 读 Day 1 实现中 trajectory 的 JSONL 格式，了解每条记录长什么样
 
+## 依赖提醒
+
+- `tree-sitter` 的 Python binding 在不同版本间 API 有差异，2025-2026 的示例常混用新旧写法
+- 如果你需要把依赖写进 `pyproject.toml`，请选择彼此兼容的 `tree-sitter` 与 `tree-sitter-python` 版本组合
+- 以你最终采用的那套 API 为准，不要同时参考两套初始化方式
+
 ## 边界
 
 ### semantic_search.py 应该负责
@@ -68,6 +74,13 @@
 - 给定一个 Python 项目目录，能列出所有符号定义
 - 给定一个符号名，能定位到它在哪个文件哪一行
 - `analyze.py` 能读取已有的 trajectory 并输出统计
+
+## 完成前必须执行的验证
+
+- 运行 `python -m py_compile agent/tools/semantic_search.py scripts/analyze.py`
+- 在当前仓库上跑一次 `semantic_search` 冒烟：至少验证列符号、找符号、取上下文三类能力
+- 为 `analyze.py` 准备一条最小 JSONL 样本并实际运行一次 CLI；如果已有真实 trajectory，可二选一
+- 确认最终选用的 `tree-sitter` / `tree-sitter-python` 组合能在本地实际解析 Python 文件
 
 ## 验收标准
 

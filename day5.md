@@ -80,6 +80,13 @@
 3. README 包含"设计决策"一节，解释为什么选极简架构。
 4. 不要在测试中引入测试以外的新依赖。
 
+## 完成前必须执行的验证
+
+- 运行 `pytest tests/`
+- 对 `examples/` 下将交付的脚本逐个执行 `python -m py_compile <file>`
+- 如果已经配置 API key，运行 `python examples/fix_bug.py`
+- 如果没有 API key，至少完成示例脚本的静态检查，并在最终说明里明确“在线端到端未验证”
+
 ## 验收标准
 
 - `pytest tests/` 全部通过，无需网络

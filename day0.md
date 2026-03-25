@@ -9,6 +9,18 @@
 - `anthropic/claude-*`
 - `deepseek/*`
 
+## 前置：创建项目骨架
+
+在写 `models.py` 之前，先创建以下最小基础结构：
+
+- `agent/__init__.py`
+- `pyproject.toml`（用 uv；至少声明 `litellm`、`pydantic`。如果 Day 0 代码直接读取模板或 YAML，再按需补 `jinja2`、`pyyaml`）
+- `.env.example`（API key 占位）
+- `trajectories/.gitkeep`
+
+参考 `overall.md` 开头的目录树。
+只创建 Day 0 需要的文件；`config/`、`tests/`、`examples/` 等留给后续 day。
+
 ## 先看哪里
 
 请优先阅读这些位置，不要在整个仓库里盲搜：
@@ -77,6 +89,13 @@ Day 1 的 `core.py` 会通过 `model.query(messages)` 调用你。
 - 能返回统一 assistant message
 - 能记录 token / cost
 - 不把 provider-specific 细节泄漏到 `core.py`
+
+## 完成前必须执行的验证
+
+- 运行 `python -m py_compile agent/models.py`
+- 运行一个无网络 smoke（可用临时脚本或最小测试）：mock `litellm` 响应，验证 `query(messages)` 返回统一 assistant message，且能读取 text / tool calls / usage / cost
+- 验证不支持的模型前缀会尽早失败
+- 确认 `agent/__init__.py`、`pyproject.toml`、`.env.example`、`trajectories/.gitkeep` 已创建
 
 ## 验收标准
 

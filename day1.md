@@ -85,6 +85,13 @@
 - 超限和格式错误能变成可记录事件
 - 替换模型层或工具层时，不需要重写 loop
 
+## 完成前必须执行的验证
+
+- 运行 `python -m py_compile agent/core.py`
+- 用 mock model + mock registry / tool executor 跑一个单轮 loop
+- 再跑一个多轮或含工具调用的 smoke，确认 `messages` 保持线性 append
+- 触发一个失败路径（如格式错误或超限），确认 trajectory 仍会写出
+
 ## 验收标准
 
 - mock model + mock registry / tool executor 可以完整跑通

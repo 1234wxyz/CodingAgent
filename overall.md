@@ -1,3 +1,9 @@
+## 环境前提
+
+- 首次克隆后，先执行 `git submodule update --init --recursive`
+- 当前仓库里的参考路径都基于已初始化的 submodule
+- Day 0 会先创建最小项目骨架；`config/`、`tests/`、`examples/` 等其余结构按各天任务逐步补齐
+
 ```text
 coding-agent/
 ├── README.md                     # 项目说明 + 面试亮点 + 设计决策
@@ -53,7 +59,7 @@ coding-agent/
 │       ├── 统计：总步数、工具调用分布、token 消耗、成功/失败
 │       └── 面试加分：展示你关注 Agent 的可观测性
 │
-├── config/
+├── config/                       # 注意：config/ 下的文件由各天按需创建，不需要提前统一
 │   ├── default.yaml              # Agent 配置（step_limit, cost_limit, model）
 │   └── prompts/
 │       ├── system.md             # 系统提示模板（Jinja2 或等价方案）
@@ -88,6 +94,14 @@ coding-agent/
 | Day 3 `middleware.py` | 只提供 pre/post hooks，不改变 `core.py` 的核心签名 | 是挂钩层，不是新的 orchestrator。 |
 | Day 3 `delegate.py` | 对主 agent 来说只是一个普通工具 | 子 agent 独立消息历史，不共享父 agent 运行时上下文。 |
 | Day 4 `semantic_search.py` | 走和 bash / file_editor 一致的工具协议 | 先做 Python-only、按需解析，不引入完整 LSP。 |
+
+## 依赖约定
+
+- Day 0 的 `pyproject.toml` 先声明最小核心依赖：`litellm`、`pydantic`
+- 如果 Day 0 / Day 3 的实现直接依赖模板或 YAML，可按需补 `jinja2`、`pyyaml`
+- Day 4 的 `semantic_search.py` 需要 `tree-sitter` 与 `tree-sitter-python`；请使用彼此兼容的版本组合，不要混用新旧 API 示例
+- Day 5 的测试阶段再补 `pytest`
+- 不需要在 Day 0 一次性加入所有未来依赖，依赖应按天增量引入
 
 ## 实现原则
 

@@ -93,6 +93,14 @@
 - 文件写入后 syntax check 能拦截语法错误
 - delegate 能完成一次同步委托并返回摘要
 
+## 完成前必须执行的验证
+
+- 运行 `python -m py_compile agent/context.py agent/middleware.py agent/tools/delegate.py`
+- 对 `context.py` 跑两个 smoke：有 `AGENTS.md` / `CLAUDE.md` 的注入场景，以及文件不存在时的静默跳过场景
+- 对 `SyntaxCheckMiddleware` 跑一个语法错误文件场景，确认返回 observation 而不是静默
+- 对 `delegate.py` 跑一个 fake sub-agent smoke，确认能同步返回摘要且父子历史隔离
+- 不要在验收阶段真实启用 `AutoCommitMiddleware` 执行 `git commit`
+
 ## 验收标准
 
 - context 组装可被 core.py 直接使用

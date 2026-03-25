@@ -111,6 +111,13 @@
 - `bash` 可执行命令并返回结构化结果
 - `file_editor` 可完成确定性的最小编辑
 
+## 完成前必须执行的验证
+
+- 运行 `python -m py_compile agent/tools/base.py agent/tools/registry.py agent/tools/bash.py agent/tools/file_editor.py`
+- 跑一个 registry smoke，确认能列出并按名称定位工具
+- 对 `bash` 跑一个 happy path 和一个 failure path
+- 对 `file_editor` 跑一个精确匹配成功和一个匹配失败场景；如果实现了空白容错，再补一个容错 smoke
+
 ## 验收标准
 
 - 工具层可被主 agent 接入
