@@ -1,0 +1,80 @@
+# Day 0: 实现 `agent/models.py`（给 Claude Code）
+
+## 目标
+
+实现一个轻量的模型适配层，给 `core.py` 提供统一的 `query(messages)` 接口。
+
+当前阶段只需要支持：
+
+- `anthropic/claude-*`
+- `deepseek/*`
+
+## 先看哪里
+
+请优先阅读这些位置，不要在整个仓库里盲搜：
+
+- `mini-swe-agent/src/minisweagent/models/litellm_model.py`
+- `mini-swe-agent/src/minisweagent/models/README.md`
+- `overall.md` 里 `agent/models.py` 的位置说明
+
+如果只想快速抓核心，先看第一个文件。
+
+## 可迁移的内容
+
+可以借这些思路：
+
+- 用 `litellm` 做统一封装
+- 向上暴露一个稳定的 `query(messages)` 接口
+- 把 usage / cost 放进返回结果
+- 在模型层处理厂商响应格式差异
+
+## 边界
+
+`models.py` 应该负责：
+
+- 接收模型配置
+- 调用 `litellm`
+- 把响应归一化成项目内部 message
+- 提取文本、tool calls、usage、cost
+
+`models.py` 不应该负责：
+
+- 主 loop
+- prompt 拼装
+- 工具执行
+- registry
+- fallback / router / 多模型编排
+- streaming
+
+## 对 Claude 的要求
+
+重点约束边界，不约束具体实现。
+
+你可以自由决定：
+
+- 用一个类还是少量辅助函数
+- 内部方法如何拆分
+- config 的具体字段组织
+- 如何做轻量错误处理
+
+但请保证这些外部约束成立：
+
+1. `core.py` 只需要调用 `query(messages)`。
+2. Claude 和 DeepSeek 的差异收敛在 `models.py` 内部。
+3. 返回值里要能拿到文本、tool calls、usage、cost。
+4. 不支持的模型名前缀应尽早失败。
+
+## 输出结果应满足
+
+- 能接收线性 `messages`
+- 能返回统一 assistant message
+- 能记录 token / cost
+- 不把 provider-specific 细节泄漏到 `core.py`
+
+## 验收标准
+
+- `anthropic/claude-*` 可正常初始化
+- `deepseek/*` 可正常初始化
+- 不支持的模型前缀会失败
+- `query(messages)` 返回统一格式
+- usage / cost 可被上层读取
