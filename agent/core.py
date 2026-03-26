@@ -74,10 +74,12 @@ class Agent:
         self,
         model: Any,
         tool_executor: Callable[[str, dict], str] | None = None,
+        middlewares: list[Any] | None = None,
         **config_kwargs: Any,
     ):
         self.model = model
         self.tool_executor = tool_executor
+        self.middlewares: list[Any] = list(middlewares) if middlewares else []
         self.config = AgentConfig(**config_kwargs)
 
         self.messages: list[dict[str, Any]] = []
@@ -144,6 +146,9 @@ class Agent:
 
     def step(self) -> None:
         """执行一步：检查限制 → query → dispatch。"""
+        for mw in self.middlewares:
+            mw.pre_step(self)
+
         self._check_limits()
         self.n_steps += 1
 
@@ -166,6 +171,8 @@ class Agent:
         finally:
             # 无论 _dispatch 是否 raise（含 Submitted / FormatError），step 都落盘
             self._append_trajectory_step(step_new_messages, cost)
+            for mw in self.middlewares:
+                mw.post_step(self)
 
     def _check_limits(self) -> None:
         """在 query 前检查 step / cost 限制。超限则 raise LimitsExceeded。"""

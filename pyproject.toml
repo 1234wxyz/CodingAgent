@@ -6,6 +6,9 @@ requires-python = ">=3.11"
 dependencies = [
     "litellm",
     "pydantic",
+    "tree-sitter==0.21.3",
+    "tree-sitter-python==0.21.0",
+    "python-dotenv",
 ]
 
 [build-system]
@@ -16,4 +19,4 @@ build-backend = "hatchling.build"
 packages = ["agent"]
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = ["pytest"]
