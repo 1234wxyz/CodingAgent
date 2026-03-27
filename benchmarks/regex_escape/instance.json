@@ -1,0 +1,7 @@
+{
+  "name": "regex_escape",
+  "description": "search_pattern(text, pattern) fails when pattern contains regex special characters like '.' or '*'. The pattern should be treated as a literal string, not a regex.",
+  "source": "Common pattern in search utilities",
+  "target_paths": ["search.py"],
+  "test_command": "python test_search.py"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "csv_quoting",
+  "description": "csv_row_to_string() does not quote fields containing commas, producing malformed CSV output. Fix the quoting logic.",
+  "source": "Common pattern in data processing libraries",
+  "target_paths": ["csvutil.py"],
+  "test_command": "python test_csv.py"
+}
