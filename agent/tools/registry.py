@@ -28,7 +28,7 @@ class ToolRegistry:
 
         registry = ToolRegistry()
         registry.register(BashTool())
-        registry.register(FileEditorTool())
+        registry.register(TaskBoardTool())
 
         agent = Agent(model, tool_executor=registry.execute)
     """

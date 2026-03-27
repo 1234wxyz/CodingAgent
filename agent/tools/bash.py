@@ -1,7 +1,8 @@
 """
-agent/tools/bash.py — 无状态本地命令执行工具
+agent/tools/bash.py -- stateless local command execution.
 
-每次调用独立，不保留 shell 状态（无 cd / 环境变量持久化）。
+Tool name stays `bash` for compatibility, but execution happens through the
+host shell configured by Python's subprocess layer.
 """
 
 from __future__ import annotations
@@ -24,8 +25,10 @@ class BashTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Execute a shell command. "
-            "Each call is stateless — shell state (cwd, env vars) does NOT persist between calls. "
+            "Execute a host shell command. "
+            "The tool name is `bash` for compatibility, but each call is stateless: "
+            "shell state (cwd, env vars) does NOT persist between calls. "
+            "Use inline Python or shell redirection for file edits when needed. "
             "Output is truncated to 10000 characters."
         )
 

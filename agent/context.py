@@ -1,45 +1,42 @@
 """
-agent/context.py — System prompt 组装与上下文工程
+agent/context.py -- system prompt assembly and reusable context helpers.
 
-对外主要接口：
-  - ContextBuilder：多段拼接 + AGENTS.md/CLAUDE.md 自动注入
-  - ContextBuilder.build() -> str   可直接塞进 messages[0]["content"]
-  - truncate_output(text, max_chars) -> str   工具输出截断（头+尾）
-  - condense_history(messages, model, keep_last) -> list   LLM 历史压缩
-
-不负责：主 loop、工具选择、模型调用调度、prompt 具体内容（那是 config/ 的事）。
+Provides:
+  - ContextBuilder: compose a system prompt from sections + inject AGENTS.md / CLAUDE.md
+  - build_local_code_assistant_prompt(): runtime prompt for the local coding assistant
+  - truncate_output(): keep head/tail for long tool output
+  - estimate_tokens(): cheap message-size heuristic
+  - micro_compact_tool_messages(): shrink old tool results in-place-friendly form
+  - archive_messages(): persist full message history before summarization
+  - condense_history(): summarize older history with an LLM while keeping the tail
 """
 
 from __future__ import annotations
 
+import copy
+import json
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# AGENTS.md / CLAUDE.md 的候选文件名（优先级从高到低）
 _AGENT_CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md"]
-
-# 截断时各侧保留的字符数
 _TRUNCATE_HEAD = 5_000
 _TRUNCATE_TAIL = 5_000
 
+_CONDENSE_SYSTEM = (
+    "You are a concise summarizer. "
+    "The user will provide a sequence of conversation messages. "
+    "Summarize them into a single compact assistant message that preserves "
+    "completed work, current state, key files, pending risks, task status, "
+    "and anything needed to continue safely."
+)
 
-# ---------------------------------------------------------------------------
-# ContextBuilder
-# ---------------------------------------------------------------------------
 
 class ContextBuilder:
-    """以 section 为单位渐进组装 system prompt。
-
-    使用方式：
-        ctx = ContextBuilder(work_dir=Path("."))
-        ctx.add_section("You are a helpful coding assistant.")
-        ctx.add_section("Always explain your reasoning.")
-        system_prompt = ctx.build()
-        messages = [{"role": "system", "content": system_prompt}, ...]
-    """
+    """Build a system prompt from sections and optional repo-level context files."""
 
     def __init__(
         self,
@@ -47,56 +44,89 @@ class ContextBuilder:
         work_dir: str | Path | None = None,
     ) -> None:
         self._sections: list[str] = list(sections) if sections else []
-        self._work_dir: Path | None = Path(work_dir) if work_dir else None
+        self._work_dir: Path | None = Path(work_dir).resolve() if work_dir else None
 
     def add_section(self, text: str) -> "ContextBuilder":
-        """追加一个 section 片段（支持链式调用）。"""
         if text and text.strip():
             self._sections.append(text.strip())
         return self
 
     def build(self) -> str:
-        """组装并返回完整的 system prompt 字符串。
-
-        流程：
-          1. 收集所有 section 文本
-          2. 若指定了 work_dir，检测 AGENTS.md / CLAUDE.md 并注入
-          3. 用双换行分隔各 section，返回拼接结果
-        """
         parts: list[str] = list(self._sections)
-
         injected = self._load_context_file()
         if injected:
             parts.append(injected)
-
         return "\n\n".join(parts)
 
     def _load_context_file(self) -> str:
-        """尝试从 work_dir 读取 AGENTS.md 或 CLAUDE.md。
-
-        文件不存在时静默跳过，不 raise。
-        """
         if self._work_dir is None:
             return ""
 
         for filename in _AGENT_CONTEXT_FILES:
             candidate = self._work_dir / filename
-            if candidate.is_file():
-                try:
-                    content = candidate.read_text(encoding="utf-8").strip()
-                    if content:
-                        header = f"# {filename}\n\n"
-                        logger.debug("Injecting %s into system prompt.", filename)
-                        return header + content
-                except Exception as e:
-                    logger.warning("Failed to read %s: %s", candidate, e)
+            if not candidate.is_file():
+                continue
+            try:
+                content = candidate.read_text(encoding="utf-8").strip()
+            except Exception as e:
+                logger.warning("Failed to read %s: %s", candidate, e)
+                continue
+
+            if content:
+                header = f"# {filename}\n\n"
+                logger.debug("Injecting %s into system prompt.", filename)
+                return header + content
 
         return ""
 
 
-# ---------------------------------------------------------------------------
-# 工具输出截断
-# ---------------------------------------------------------------------------
+def build_local_code_assistant_prompt(
+    work_dir: str | Path,
+    sandbox_summary: str = "",
+) -> str:
+    """Build the runtime system prompt for the interactive local coding assistant."""
+    work_dir = Path(work_dir).resolve()
+    builder = ContextBuilder(work_dir=work_dir)
+
+    builder.add_section(
+        f"You are a local coding assistant working inside {work_dir}. "
+        "Use tools to inspect code, edit files through shell commands, run tests, "
+        "track multi-step work, and explain your results clearly."
+    )
+    builder.add_section(
+        "Operating style:\n"
+        "1. Inspect the smallest relevant surface first.\n"
+        "2. Make one decisive move per step, similar to a disciplined command loop.\n"
+        "3. Prefer semantic_search for Python structure, bash for reading/editing/testing, "
+        "task_board for multi-step plans, and delegate for bounded exploration.\n"
+        "4. If the job spans multiple meaningful steps, multiple files, or has dependencies, "
+        "create/update tasks before large edits.\n"
+        "5. Verify after changes with targeted commands or tests, then finish with a concise summary."
+    )
+    builder.add_section(
+        "Response contract:\n"
+        "- Each step must do exactly one of two things: request tool work, or return the final answer.\n"
+        "- Do not mix a long narrative with tool calls.\n"
+        "- Prefer one focused tool call per step; if multiple shell actions belong together, combine them into one bash command.\n"
+        "- Only stop calling tools when you have either verified the result or clearly cannot proceed."
+    )
+    builder.add_section(
+        "Shell rules:\n"
+        "- The `bash` tool uses the host shell and is stateless across calls.\n"
+        "- Include any required `cd`, environment setup, or inline Python in the command itself.\n"
+        "- There is no file_editor tool. Use shell commands or short Python snippets for file changes.\n"
+        "- Old tool outputs may be compacted. Re-run a command if exact output matters."
+    )
+    builder.add_section(
+        "Task rules:\n"
+        "- `task_board` stores persistent work items in `.tasks/` so plans survive context compression.\n"
+        "- Mark tasks in progress when you start them and completed when verification is done.\n"
+        "- Keep the task list lightweight and factual."
+    )
+    if sandbox_summary.strip():
+        builder.add_section("Execution environment:\n" + sandbox_summary.strip())
+    return builder.build()
+
 
 def truncate_output(
     text: str,
@@ -104,17 +134,7 @@ def truncate_output(
     head: int = _TRUNCATE_HEAD,
     tail: int = _TRUNCATE_TAIL,
 ) -> str:
-    """截断过长的工具输出，保留头尾各若干字符。
-
-    输出长度 <= max_chars 时原样返回。
-    超出时返回 head 个字符 + 省略提示 + tail 个字符。
-
-    Args:
-        text:      原始输出字符串。
-        max_chars: 触发截断的阈值。
-        head:      保留前面的字符数。
-        tail:      保留末尾的字符数。
-    """
+    """Trim long text to head + tail with an omission marker."""
     if len(text) <= max_chars:
         return text
 
@@ -123,44 +143,79 @@ def truncate_output(
     return text[:head] + separator + text[-tail:]
 
 
-# ---------------------------------------------------------------------------
-# 历史压缩（轻量 condenser）
-# ---------------------------------------------------------------------------
+def estimate_tokens(messages: list[dict[str, Any]]) -> int:
+    """Cheap token estimate using serialized character count."""
+    try:
+        payload = json.dumps(messages, ensure_ascii=False, default=str)
+    except Exception:
+        payload = str(messages)
+    return max(1, len(payload) // 4)
 
-_CONDENSE_SYSTEM = (
-    "You are a concise summarizer. "
-    "The user will give you a sequence of conversation messages. "
-    "Summarize them into a single, compact assistant message that preserves all "
-    "key facts, decisions, and file changes. Be brief but complete."
-)
+
+def micro_compact_tool_messages(
+    messages: list[dict[str, Any]],
+    keep_recent: int = 3,
+    compact_above_chars: int = 400,
+) -> list[dict[str, Any]]:
+    """Replace older long tool outputs with short placeholders."""
+    if keep_recent < 0:
+        raise ValueError("keep_recent must be >= 0")
+
+    compacted = copy.deepcopy(messages)
+    tool_name_map = _extract_tool_name_map(compacted)
+
+    tool_indexes = [
+        idx for idx, msg in enumerate(compacted)
+        if msg.get("role") == "tool" and isinstance(msg.get("content"), str)
+    ]
+    if len(tool_indexes) <= keep_recent:
+        return compacted
+
+    for idx in tool_indexes[:-keep_recent]:
+        msg = compacted[idx]
+        content = msg.get("content") or ""
+        if len(content) <= compact_above_chars:
+            continue
+        tool_call_id = msg.get("tool_call_id", "")
+        tool_name = tool_name_map.get(tool_call_id, "tool")
+        msg["content"] = (
+            f"[Compacted previous tool output from {tool_name}; "
+            f"original length={len(content)} chars.]"
+        )
+
+    return compacted
+
+
+def archive_messages(
+    messages: list[dict[str, Any]],
+    directory: str | Path,
+) -> Path:
+    """Persist the full message history as JSONL before summarization."""
+    base_dir = Path(directory)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    path = base_dir / f"transcript_{time.time_ns()}.jsonl"
+    with path.open("w", encoding="utf-8") as handle:
+        for msg in messages:
+            handle.write(json.dumps(msg, ensure_ascii=False, default=str) + "\n")
+    return path
 
 
 def condense_history(
     messages: list[dict[str, Any]],
     model: Any,
     keep_last: int = 6,
+    archive_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
-    """用 LLM 把旧消息压缩成一条摘要，保留最近 keep_last 条消息原样。
-
-    Args:
-        messages:  完整消息历史（含 system message）。
-        model:     LLMModel 实例，需暴露 query(messages)。
-        keep_last: 末尾保留的消息数量（不压缩）。
-
-    Returns:
-        压缩后的消息列表：
-          messages[0] (system, 若有) + [summary_message] + messages[-keep_last:]
-    """
+    """Summarize older history with an LLM and keep the most recent tail intact."""
     if len(messages) <= keep_last + 1:
-        return messages  # 不需要压缩
+        return messages
 
-    # 分离 system message
     if messages and messages[0].get("role") == "system":
-        system_msg = messages[0]
+        system_msg = dict(messages[0])
         history = messages[1:]
     else:
         system_msg = None
-        history = messages
+        history = list(messages)
 
     to_condense = history[:-keep_last] if keep_last > 0 else history
     to_keep = history[-keep_last:] if keep_last > 0 else []
@@ -168,11 +223,9 @@ def condense_history(
     if not to_condense:
         return messages
 
-    # 把待压缩消息转成可读文本
-    condensed_input = _format_messages_for_condensing(to_condense)
     prompt = [
         {"role": "system", "content": _CONDENSE_SYSTEM},
-        {"role": "user", "content": condensed_input},
+        {"role": "user", "content": _format_messages_for_condensing(to_condense)},
     ]
 
     try:
@@ -181,6 +234,12 @@ def condense_history(
     except Exception as e:
         logger.warning("History condensation failed: %s. Keeping original messages.", e)
         return messages
+
+    if archive_path:
+        summary_content = (
+            f"{summary_content}\n\n"
+            f"[Full transcript archived at: {Path(archive_path)}]"
+        )
 
     summary = {
         "role": "assistant",
@@ -196,8 +255,31 @@ def condense_history(
     return result
 
 
+def _extract_tool_name_map(messages: list[dict[str, Any]]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            continue
+
+        for tool_call in msg.get("tool_calls") or []:
+            if not isinstance(tool_call, dict):
+                continue
+            tool_call_id = tool_call.get("id")
+            if not tool_call_id:
+                continue
+            if "name" in tool_call:
+                mapping[tool_call_id] = tool_call["name"]
+            elif "function" in tool_call:
+                mapping[tool_call_id] = tool_call["function"].get("name", "tool")
+
+        for tool_call in msg.get("_normalized_tool_calls") or []:
+            if isinstance(tool_call, dict) and tool_call.get("id"):
+                mapping[tool_call["id"]] = tool_call.get("name", "tool")
+
+    return mapping
+
+
 def _format_messages_for_condensing(messages: list[dict[str, Any]]) -> str:
-    """把消息列表格式化为文本，供 LLM 压缩。"""
     lines: list[str] = []
     for msg in messages:
         role = msg.get("role", "unknown")
@@ -205,16 +287,17 @@ def _format_messages_for_condensing(messages: list[dict[str, Any]]) -> str:
         tool_calls = msg.get("_normalized_tool_calls") or msg.get("tool_calls") or []
 
         if role == "tool":
-            lines.append(f"[tool result] {content[:500]}")
+            lines.append(f"[tool result] {truncate_output(str(content), max_chars=800)}")
         elif tool_calls:
             tool_names = [
                 tc.get("name") or tc.get("function", {}).get("name", "?")
                 for tc in tool_calls
+                if isinstance(tc, dict)
             ]
             lines.append(f"[assistant] called tools: {tool_names}")
             if content:
-                lines.append(f"  content: {content[:200]}")
+                lines.append(f"  content: {truncate_output(str(content), max_chars=400)}")
         else:
-            lines.append(f"[{role}] {content[:500]}")
+            lines.append(f"[{role}] {truncate_output(str(content), max_chars=800)}")
 
     return "\n".join(lines)

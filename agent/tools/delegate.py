@@ -1,7 +1,7 @@
 """
 agent/tools/delegate.py — 子 Agent 委托工具
 
-对主 agent 来说，delegate 就是一个普通工具（和 bash/file_editor 同级）。
+对主 agent 来说，delegate 就是一个普通工具（和 bash/semantic_search/task_board 同级）。
 主 agent 通过 tool call 触发，传入任务描述，DelegateTool 同步阻塞执行，返回摘要。
 
 设计约束：

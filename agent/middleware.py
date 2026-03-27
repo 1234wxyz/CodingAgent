@@ -1,186 +1,274 @@
 """
-agent/middleware.py — Agent Loop 钩子协议与内置中间件
+agent/middleware.py -- agent hooks plus execution guardrails.
 
-提供两种模式：
-
-1. Middleware ABC（step 级别钩子）
-   - pre_step(agent) — 每步 query 之前调用
-   - post_step(agent) — 每步 dispatch 完成之后调用
-   - 用法：Agent(model, tool_executor=..., middlewares=[MyMiddleware()])
-
-2. SyntaxCheckMiddleware（tool_executor 包装器）
-   - 包装 tool_executor，在 file_editor 写 .py 文件后运行 py_compile
-   - 语法错误时把错误信息追加到 observation，保证 LLM 可见
-   - 用法：Agent(model, tool_executor=SyntaxCheckMiddleware(registry.execute))
-   - 零侵入 core.py（兼容没有 middlewares 参数的老版本）
-
-3. AutoCommitMiddleware（继承 Middleware，使用 post_step）
-   - 每 N 步运行 git add -A && git commit
-   - 只定义，不在当前项目开发任务中主动启用
-
-边界：
-  - 不改变 agent 的决策逻辑
-  - 不替代工具层的执行
-  - 不做复杂事件系统
+Responsibilities:
+  - Middleware ABC with pre_step / post_step hooks
+  - detect_sandbox(): lightweight environment and writeability probe
+  - BashSafetyMiddleware: block obviously dangerous shell commands
+  - SandboxAwarenessMiddleware: inject sandbox facts into the system prompt once
+  - ContextCompactionMiddleware: compact old tool output and summarize history before query
 """
 
 from __future__ import annotations
 
 import logging
-import subprocess
+import os
+import platform
+import re
+import tempfile
+import time
 from abc import ABC
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from agent.context import (
+    archive_messages,
+    condense_history,
+    estimate_tokens,
+    micro_compact_tool_messages,
+)
+
 logger = logging.getLogger(__name__)
 
-# file_editor 中写文件的命令名
-_WRITE_COMMANDS = {"str_replace", "create"}
-
-
-# ---------------------------------------------------------------------------
-# Middleware 基类
-# ---------------------------------------------------------------------------
 
 class Middleware(ABC):
-    """Agent loop step 级别钩子协议。
-
-    子类只需要覆盖需要的方法，不需要覆盖两者。
-    默认实现均为空操作（空 pass），不影响 loop 行为。
-    """
+    """Agent loop step hooks. Subclasses may override either method."""
 
     def pre_step(self, agent: Any) -> None:
-        """每步开始前（_check_limits 之前）调用。
-
-        Args:
-            agent: 当前运行的 Agent 实例，可读取 agent.messages / agent.n_steps 等。
-        """
+        """Called before each model query."""
 
     def post_step(self, agent: Any) -> None:
-        """每步结束后（dispatch + trajectory 落盘之后）调用。
-
-        Args:
-            agent: 当前运行的 Agent 实例，此时最新的消息已追加到 agent.messages。
-        """
+        """Called after dispatch and step persistence."""
 
 
-# ---------------------------------------------------------------------------
-# SyntaxCheckMiddleware — tool_executor 包装器
-# ---------------------------------------------------------------------------
+@dataclass(slots=True)
+class SandboxInfo:
+    """Best-effort view of the current runtime constraints."""
 
-class SyntaxCheckMiddleware:
-    """包装 tool_executor，在 file_editor 写 .py 文件后运行 py_compile。
+    mode: str
+    source: str
+    shell: str
+    workspace_root: Path
+    workspace_writable: bool
+    temp_writable: bool
+    notes: list[str] = field(default_factory=list)
 
-    语法错误时把错误信息追加到 observation 末尾，让 LLM 立刻看到并修正。
-
-    用法（包装 registry.execute）：
-        agent = Agent(model, tool_executor=SyntaxCheckMiddleware(registry.execute))
-
-    或单独用于测试：
-        checker = SyntaxCheckMiddleware(my_executor)
-        obs = checker("file_editor", {"command": "create", "path": "foo.py", "content": "def f(:\n"})
-        # obs 末尾含 "[SyntaxCheck] ERROR: ..."
-    """
-
-    def __init__(self, base_executor: Callable[[str, dict], str]) -> None:
-        self._base = base_executor
-
-    def __call__(self, name: str, arguments: dict[str, Any]) -> str:
-        """执行工具，如果是 .py 文件写操作则追加语法检查结果。"""
-        observation = self._base(name, arguments)
-
-        if name == "file_editor" and arguments.get("command") in _WRITE_COMMANDS:
-            path = arguments.get("path", "")
-            if path.endswith(".py"):
-                syntax_note = self._check_syntax(path)
-                if syntax_note:
-                    observation = observation + "\n\n" + syntax_note
-
-        return observation
-
-    def _check_syntax(self, path: str) -> str:
-        """运行 python -m py_compile 检查语法。
-
-        Returns:
-            空字符串表示语法正确；否则返回含错误信息的字符串。
-        """
-        try:
-            result = subprocess.run(
-                ["python", "-m", "py_compile", path],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                error_msg = (result.stderr or result.stdout).strip()
-                return f"[SyntaxCheck] ERROR in {path}:\n{error_msg}"
-        except FileNotFoundError:
-            logger.debug("File %s not found for syntax check (may not exist yet).", path)
-        except subprocess.TimeoutExpired:
-            logger.warning("Syntax check timed out for %s.", path)
-        except Exception as e:
-            logger.warning("Syntax check failed for %s: %s", path, e)
-        return ""
+    def render(self) -> str:
+        lines = [
+            f"sandbox_mode={self.mode}",
+            f"source={self.source}",
+            f"shell={self.shell}",
+            f"workspace_root={self.workspace_root}",
+            f"workspace_writable={self.workspace_writable}",
+            f"temp_writable={self.temp_writable}",
+        ]
+        if self.notes:
+            lines.append("notes=" + "; ".join(self.notes))
+        return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# AutoCommitMiddleware — step 级别钩子
-# ---------------------------------------------------------------------------
+@dataclass(slots=True)
+class CommandVerdict:
+    allowed: bool
+    reason: str = ""
 
-class AutoCommitMiddleware(Middleware):
-    """每 N 步运行 git add -A && git commit。
 
-    注意：此类已定义实现，但不应在当前项目开发任务中主动启用，
-    以避免干扰开发工作流。
+_HIGH_RISK_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(^|[;&|])\s*sudo\b", re.IGNORECASE), "sudo elevation is blocked"),
+    (re.compile(r"\brm\s+-rf\s+([/\\]|[A-Za-z]:\\)(\s|$)", re.IGNORECASE), "destructive recursive delete is blocked"),
+    (re.compile(r"\b(del|erase)\s+/[a-z]*\s+[A-Za-z]:\\", re.IGNORECASE), "destructive Windows delete is blocked"),
+    (re.compile(r"\brmdir\s+/s\b", re.IGNORECASE), "recursive directory deletion is blocked"),
+    (re.compile(r"\bgit\s+reset\s+--hard\b", re.IGNORECASE), "destructive git reset is blocked"),
+    (re.compile(r"\bgit\s+clean\s+-f", re.IGNORECASE), "destructive git clean is blocked"),
+    (re.compile(r"\b(shutdown|reboot|poweroff|halt)\b", re.IGNORECASE), "system power commands are blocked"),
+    (re.compile(r"\bmkfs(\.\w+)?\b", re.IGNORECASE), "disk formatting commands are blocked"),
+    (re.compile(r"\bdiskpart\b", re.IGNORECASE), "disk partition commands are blocked"),
+    (re.compile(r"\bdd\s+if=", re.IGNORECASE), "raw disk writes are blocked"),
+    (re.compile(r"curl\b[^|]*\|\s*(sh|bash|zsh|pwsh|powershell)\b", re.IGNORECASE), "pipe-to-shell install commands are blocked"),
+    (re.compile(r":\(\)\s*\{\s*:\|:&\s*\};:", re.IGNORECASE), "fork bomb pattern is blocked"),
+]
 
-    用法：
-        mw = AutoCommitMiddleware(commit_interval=5, work_dir=".")
-        agent = Agent(model, tool_executor=..., middlewares=[mw])
-    """
+_WRITE_LIKE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\b(touch|mkdir|copy|move|ren|echo)\b", re.IGNORECASE),
+    re.compile(r"\b(del|erase|rm|rmdir)\b", re.IGNORECASE),
+    re.compile(r"\bpython\b.+\b(write_text|open\()", re.IGNORECASE),
+    re.compile(r"(>>|>|Out-File|Set-Content|Add-Content)", re.IGNORECASE),
+]
+
+
+def detect_sandbox(
+    work_dir: str | Path | None = None,
+    env: dict[str, str] | None = None,
+) -> SandboxInfo:
+    """Best-effort sandbox detection from env vars plus write probes."""
+    env = dict(env or os.environ)
+    workspace_root = Path(work_dir or ".").resolve()
+
+    explicit_keys = (
+        "CODEX_SANDBOX_MODE",
+        "CLAUDE_CODE_SANDBOX",
+        "SANDBOX_MODE",
+        "WORKSPACE_SANDBOX_MODE",
+    )
+    mode = "unknown"
+    source = "heuristic"
+    for key in explicit_keys:
+        value = env.get(key)
+        if value:
+            mode = value
+            source = f"env:{key}"
+            break
+
+    workspace_writable = _probe_write_access(workspace_root)
+    temp_writable = _probe_write_access(Path(tempfile.gettempdir()))
+    shell = env.get("COMSPEC") or env.get("SHELL") or platform.system()
+
+    notes: list[str] = []
+    if env.get("CI"):
+        notes.append("ci=true")
+    if not workspace_writable:
+        notes.append("workspace appears read-only")
+    if not temp_writable:
+        notes.append("temp directory appears read-only")
+
+    if mode == "unknown":
+        if workspace_writable and temp_writable:
+            mode = "workspace-write-or-better"
+        elif workspace_writable:
+            mode = "workspace-write"
+        else:
+            mode = "read-only"
+
+    return SandboxInfo(
+        mode=mode,
+        source=source,
+        shell=shell,
+        workspace_root=workspace_root,
+        workspace_writable=workspace_writable,
+        temp_writable=temp_writable,
+        notes=notes,
+    )
+
+
+def assess_bash_command(command: str, sandbox: SandboxInfo | None = None) -> CommandVerdict:
+    """Apply conservative guardrails to shell commands."""
+    raw = command.strip()
+    if not raw:
+        return CommandVerdict(True)
+
+    for pattern, reason in _HIGH_RISK_PATTERNS:
+        if pattern.search(raw):
+            return CommandVerdict(False, reason)
+
+    if sandbox and sandbox.mode == "read-only":
+        for pattern in _WRITE_LIKE_PATTERNS:
+            if pattern.search(raw):
+                return CommandVerdict(False, "sandbox appears read-only; write-like command blocked")
+
+    return CommandVerdict(True)
+
+
+class BashSafetyMiddleware:
+    """Wrap tool execution and block high-risk shell commands before they run."""
 
     def __init__(
         self,
-        commit_interval: int = 5,
+        base_executor: Callable[[str, dict], str],
+        sandbox_info: SandboxInfo | None = None,
         work_dir: str | Path | None = None,
-        commit_message_prefix: str = "auto: agent step",
     ) -> None:
-        self.commit_interval = commit_interval
-        self.work_dir = str(work_dir) if work_dir else None
-        self.commit_message_prefix = commit_message_prefix
-        self._steps_since_commit: int = 0
+        self._base = base_executor
+        self._sandbox = sandbox_info or detect_sandbox(work_dir=work_dir)
 
-    def post_step(self, agent: Any) -> None:
-        """每 commit_interval 步提交一次。"""
-        self._steps_since_commit += 1
-        if self._steps_since_commit < self.commit_interval:
+    @property
+    def sandbox_info(self) -> SandboxInfo:
+        return self._sandbox
+
+    def __call__(self, name: str, arguments: dict[str, Any]) -> str:
+        if name != "bash":
+            return self._base(name, arguments)
+
+        command = str(arguments.get("command", ""))
+        verdict = assess_bash_command(command, sandbox=self._sandbox)
+        if not verdict.allowed:
+            return f"Error: Blocked high-risk bash command. Reason: {verdict.reason}"
+
+        return self._base(name, arguments)
+
+
+class SandboxAwarenessMiddleware(Middleware):
+    """Inject sandbox facts into the system prompt once per agent run."""
+
+    def __init__(self, sandbox_info: SandboxInfo) -> None:
+        self._sandbox_info = sandbox_info
+
+    def pre_step(self, agent: Any) -> None:
+        if getattr(agent, "_sandbox_notice_injected", False):
             return
 
-        self._steps_since_commit = 0
-        self._run_git_commit(step=agent.n_steps)
+        notice = (
+            "[Sandbox detection]\n"
+            f"{self._sandbox_info.render()}\n"
+            "High-risk bash commands may be blocked. Re-check the environment before attempting destructive edits."
+        )
 
-    def _run_git_commit(self, step: int) -> None:
-        """执行 git add -A && git commit。失败时只记录日志，不 raise。"""
-        msg = f"{self.commit_message_prefix} {step}"
-        cwd = self.work_dir
-        try:
-            add_result = subprocess.run(
-                ["git", "add", "-A"],
-                capture_output=True, text=True, cwd=cwd, timeout=30,
-            )
-            if add_result.returncode != 0:
-                logger.warning("git add failed: %s", add_result.stderr)
-                return
+        if agent.messages and agent.messages[0].get("role") == "system":
+            original = agent.messages[0].get("content") or ""
+            agent.messages[0]["content"] = original.rstrip() + "\n\n" + notice
+        else:
+            agent.messages.insert(0, {"role": "system", "content": notice})
 
-            commit_result = subprocess.run(
-                ["git", "commit", "-m", msg],
-                capture_output=True, text=True, cwd=cwd, timeout=30,
-            )
-            if commit_result.returncode == 0:
-                logger.info("AutoCommit: %s", msg)
-            else:
-                # returncode=1 + "nothing to commit" is not an error
-                stderr = commit_result.stderr or commit_result.stdout
-                if "nothing to commit" not in stderr:
-                    logger.warning("git commit failed: %s", stderr)
-        except Exception as e:
-            logger.warning("AutoCommitMiddleware error: %s", e)
+        agent._sandbox_notice_injected = True
+
+
+class ContextCompactionMiddleware(Middleware):
+    """Compact old tool outputs and summarize history before the next model call."""
+
+    def __init__(
+        self,
+        summary_model: Any,
+        transcript_dir: str | Path = ".transcripts",
+        keep_recent_tool_results: int = 3,
+        compact_above_chars: int = 400,
+        condense_threshold_tokens: int = 12_000,
+        keep_last: int = 6,
+    ) -> None:
+        self.summary_model = summary_model
+        self.transcript_dir = Path(transcript_dir)
+        self.keep_recent_tool_results = keep_recent_tool_results
+        self.compact_above_chars = compact_above_chars
+        self.condense_threshold_tokens = condense_threshold_tokens
+        self.keep_last = keep_last
+
+    def pre_step(self, agent: Any) -> None:
+        compacted = micro_compact_tool_messages(
+            agent.messages,
+            keep_recent=self.keep_recent_tool_results,
+            compact_above_chars=self.compact_above_chars,
+        )
+        agent.messages[:] = compacted
+
+        if estimate_tokens(agent.messages) < self.condense_threshold_tokens:
+            return
+
+        archive_path = archive_messages(agent.messages, self.transcript_dir)
+        condensed = condense_history(
+            agent.messages,
+            model=self.summary_model,
+            keep_last=self.keep_last,
+            archive_path=archive_path,
+        )
+        agent.messages[:] = condensed
+        logger.info("Context condensed before step %s. Transcript: %s", agent.n_steps + 1, archive_path)
+
+
+def _probe_write_access(directory: Path) -> bool:
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / f".sandbox_probe_{time.time_ns()}"
+        probe.write_text("probe", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False

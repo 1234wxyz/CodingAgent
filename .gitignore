@@ -4,3 +4,5 @@ __pycache__/
 .claude/
 .env
 trajectories/*.jsonl
+.tasks/
+.transcripts/
