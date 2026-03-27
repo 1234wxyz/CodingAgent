@@ -56,6 +56,12 @@ python main.py
 python examples/fix_bug.py
 ```
 
+Demo 场景模板：
+
+```bash
+Get-ChildItem demo/bug_scenarios
+```
+
 ---
 
 ## 架构概览
@@ -77,6 +83,9 @@ agent/
 
 examples/
 └── fix_bug.py       # 用完整助手栈修复一个 Python bug
+
+demo/
+└── bug_scenarios/   # 不同类型 bug 场景模板（供后续真实 API 验收）
 
 main.py              # 交互式 CLI 入口
 
@@ -128,6 +137,24 @@ tests/
 - `.transcripts/`：上下文压缩前保存的完整历史
 
 使用 `python scripts/analyze.py trajectories/` 可以查看轨迹统计。
+
+---
+
+## Demo 场景
+
+`demo/bug_scenarios/` 下现在提供 3 类最小 bug 场景：
+
+- `zero_division`：运行时异常
+- `trailing_window`：off-by-one 逻辑错误
+- `loyalty_checkout`：多文件业务规则错误
+
+每个场景都包含：
+
+- `scenario.json`：场景描述与验收命令
+- 业务源码文件
+- `verify.py`：修复后的验收脚本
+
+这些场景默认是“带 bug”的，所以当前直接运行各自的 `verify.py` 应该失败；后续可以把整个场景目录复制到临时工作区，再让 `main.py` 所代表的本地代码助手链路去真实修复和验证。
 
 ---
 
