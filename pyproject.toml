@@ -10,6 +10,7 @@ dependencies = [
     "tree-sitter==0.21.3",
     "tree-sitter-python==0.21.0",
     "python-dotenv",
+    "pyyaml",
 ]
 
 [build-system]

@@ -154,3 +154,25 @@ def test_middleware_pre_post_called(make_model):
     agent.run([{"role": "user", "content": "hi"}])
 
     assert log == ["pre", "post"]
+
+
+def test_reflection_middleware_injects_once(make_model):
+    """ReflectionMiddleware injects self-critique prompt once, then allows finish."""
+    from agent.core import Agent
+    from agent.middleware import ReflectionMiddleware
+    from tests.conftest import text_response
+
+    # Step 1: text (triggers reflection injection) → Step 2: text (finishes)
+    model = make_model([
+        text_response("I think I'm done."),
+        text_response("Confidence 5. All good."),
+    ])
+    mw = ReflectionMiddleware(max_reflections=1)
+    agent = Agent(model, middlewares=[mw])
+    result = agent.run([{"role": "user", "content": "fix bug"}])
+
+    assert result["status"] == "Submitted"
+    assert result["total_steps"] == 2
+    # Check that reflection prompt was injected
+    user_msgs = [m for m in agent.messages if m.get("role") == "user"]
+    assert any("confidence" in m.get("content", "").lower() for m in user_msgs)

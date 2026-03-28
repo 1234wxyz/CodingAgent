@@ -67,6 +67,43 @@ def test_build_prompt_has_shell_edit_examples(tmp_path):
     assert "stateless" in prompt.lower()
 
 
+def test_context_builder_from_yaml(tmp_path):
+    yaml_content = (
+        'version: "test"\n'
+        'name: "test-prompt"\n'
+        'sections:\n'
+        '  role: |\n'
+        '    You are a helper in {work_dir}.\n'
+        '  rules: |\n'
+        '    Do one thing per step.\n'
+    )
+    yaml_path = tmp_path / "test.yaml"
+    yaml_path.write_text(yaml_content, encoding="utf-8")
+
+    builder = ContextBuilder.from_yaml(yaml_path, work_dir=tmp_path)
+    prompt = builder.build()
+
+    assert str(tmp_path) in prompt
+    assert "Do one thing per step" in prompt
+
+
+def test_context_builder_from_yaml_with_sandbox(tmp_path):
+    yaml_content = (
+        'version: "test"\n'
+        'sections:\n'
+        '  role: |\n'
+        '    Hello.\n'
+    )
+    yaml_path = tmp_path / "test.yaml"
+    yaml_path.write_text(yaml_content, encoding="utf-8")
+
+    builder = ContextBuilder.from_yaml(yaml_path, work_dir=tmp_path, sandbox_summary="mode=test")
+    prompt = builder.build()
+
+    assert "Hello" in prompt
+    assert "mode=test" in prompt
+
+
 def test_micro_compact_tool_messages_keeps_recent_results():
     messages = [
         {"role": "assistant", "tool_calls": [{"id": "c1", "name": "bash", "arguments": {}}]},

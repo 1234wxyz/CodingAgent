@@ -1,0 +1,7 @@
+{
+  "name": "dict_merge_overwrite",
+  "description": "dict_merge(a, b) mutates the original dict 'a' instead of returning a new merged dict. Fix it to not modify the input.",
+  "source": "Common pattern in Django/Flask settings merging",
+  "target_paths": ["utils.py"],
+  "test_command": "python test_merge.py"
+}

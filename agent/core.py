@@ -14,6 +14,7 @@ agent/core.py — 极薄的 Agent Loop
 
 import json
 import logging
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable
@@ -154,9 +155,14 @@ class Agent:
         self._check_limits()
         self.n_steps += 1
 
+        t0 = time.perf_counter()
+
         assistant_msg = self.model.query(self.messages)
         cost = assistant_msg.get("cost", 0.0)
         self.total_cost += cost
+
+        # Extract token breakdown before discarding usage
+        token_breakdown = assistant_msg.get("usage") or {}
 
         # 归一化：确保 messages 里存入的 assistant 消息不含 cost/usage 冗余字段
         # 保留 role / content / tool_calls / _normalized_tool_calls，供下游消费
@@ -176,8 +182,24 @@ class Agent:
         except Submitted:
             submitted = True
         finally:
+            wall_ms = (time.perf_counter() - t0) * 1000
+            # Extract tool names called this step
+            tool_calls = (
+                clean_msg.get("_normalized_tool_calls")
+                or clean_msg.get("tool_calls")
+                or []
+            )
+            tool_names = [
+                tc.get("name") or tc.get("function", {}).get("name", "unknown")
+                for tc in tool_calls if isinstance(tc, dict)
+            ]
             # 无论 _dispatch 是否 raise（含 Submitted / FormatError），step 都落盘
-            self._append_trajectory_step(step_new_messages, cost)
+            self._append_trajectory_step(
+                step_new_messages, cost,
+                wall_time_ms=round(wall_ms, 1),
+                tool_names=tool_names,
+                token_breakdown=token_breakdown,
+            )
             msg_count_before = len(self.messages)
             for mw in self.middlewares:
                 mw.post_step(self)
@@ -265,16 +287,24 @@ class Agent:
         self,
         new_messages: list[dict[str, Any]],
         step_cost: float,
+        *,
+        wall_time_ms: float = 0.0,
+        tool_names: list[str] | None = None,
+        token_breakdown: dict[str, Any] | None = None,
     ) -> None:
-        """追加本步 trajectory 条目（JSONL）。"""
+        """追加本步 trajectory 条目（JSONL），含可观测性字段。"""
         if not self.config.trajectory_path:
             return
-        entry = {
+        entry: dict[str, Any] = {
             "step": self.n_steps,
             "messages": new_messages,
             "cost": step_cost,
             "total_cost": self.total_cost,
+            "wall_time_ms": wall_time_ms,
+            "tool_names": tool_names or [],
         }
+        if token_breakdown:
+            entry["token_breakdown"] = token_breakdown
         self._write_jsonl_line(entry)
 
     def _append_trajectory_exit(

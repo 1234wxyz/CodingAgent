@@ -1,170 +1,299 @@
 # coding-agent
 
-> A minimal, shell-first Python coding agent with a thin explainable loop,
-> middleware-based safety, and persistent multi-step task tracking.
+> A from-scratch Python coding agent with a thin explainable loop,
+> middleware-based safety, self-reflection, multi-agent orchestration,
+> structured observability, and benchmark evaluation.
 
-一个面向本地代码库的极简 Python Coding Agent —— shell-first 架构，薄 loop 设计，中间件安全，持久化任务追踪。
+一个从零实现的可评测、可自省、可观测的 Python Coding Agent。
+
+核心 loop 仅 ~300 行，通过 middleware 分离安全与上下文管理，通过 tool-calling 扩展能力，
+支持角色化多 Agent 协作、自省纠错、持久化任务追踪、prompt 版本化和终端 Dashboard。
 
 ---
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 1. 克隆与安装
+# 1. Clone & install
 git clone <repo>
 cd codingAgentProject
-pip install -e ".[dev]"          # 需要 Python >= 3.11
+pip install -e ".[dev]"          # Python >= 3.11
 
-# 2. 配置 .env
+# 2. Configure .env
 cat > .env <<'EOF'
 MODEL_NAME=deepseek/deepseek-chat
 DEEPSEEK_API_KEY=your_key_here
 EOF
 
-# 3. 启动
-python main.py                   # 交互式本地代码助手
+# 3. Run
+python main.py                   # Interactive mode (streaming output)
 ```
 
 ---
 
-## 使用方式
+## Usage
 
-### 交互模式
+### Interactive Mode
 
 ```bash
 python main.py
 ```
 
-进入 REPL，输入任务描述，agent 会调用工具、修改文件、运行测试，完成后给出摘要。
+Enter task descriptions; the agent calls tools, edits files, runs tests, then summarizes.
+Token-by-token streaming output keeps the terminal responsive.
 
-### 单次任务模式
+### Single-shot Mode
 
 ```bash
-python main.py --task "修复 calculator.py 中空列表的 ZeroDivisionError" --work-dir ./demo/bug_scenarios/zero_division
+python main.py --task "Fix the ZeroDivisionError in calculator.py" --work-dir ./demo/bug_scenarios/zero_division
 ```
 
-执行单个任务后退出，适合脚本集成。
-
-### 场景验收 (真实 API)
+### Scenario Verification (Real API)
 
 ```bash
-python scripts/run_scenarios.py                    # 运行全部 demo 场景
-python scripts/run_scenarios.py zero_division       # 运行单个场景
-python scripts/run_scenarios.py --dry-run            # 仅列出可用场景
-python scripts/run_scenarios.py --step-limit 15 --cost-limit 2.0
+python scripts/run_scenarios.py                     # Run all 6 demo scenarios
+python scripts/run_scenarios.py zero_division        # Run one scenario
+python scripts/run_scenarios.py --prompt-version v2  # Use versioned prompt
+python scripts/run_scenarios.py --dry-run            # List available scenarios
 ```
 
-场景验收流程：复制 bug 场景到临时目录 → 启动 agent 修复 → 运行 `verify.py` 验收 → 汇总 pass/fail。
-
-### 端到端示例
+### Benchmark Evaluation
 
 ```bash
-python examples/fix_bug.py       # 单文件 bug 修复 demo
+python scripts/benchmark.py                          # Run all 5 benchmark instances
+python scripts/benchmark.py dict_merge_overwrite     # Run one instance
+python scripts/benchmark.py --dry-run                # List instances
+```
+
+### Trajectory Dashboard
+
+```bash
+python scripts/dashboard.py trajectories/            # Latest trajectory
+python scripts/dashboard.py path/to/trajectory.jsonl # Specific file
+```
+
+### Prompt A/B Comparison
+
+```bash
+python scripts/compare_prompts.py v1 v2              # Compare two prompt versions
+python scripts/compare_prompts.py v1 v2 --dry-run    # Preview what would run
 ```
 
 ---
 
-## 架构
+## Architecture
 
 ```text
+User Request
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│  System Prompt  (context.py / prompts/*.yaml)       │
+│  ┌─────────────────────────────────────────────┐    │
+│  │  Agent Loop  (core.py, ~300 lines)          │    │
+│  │  run → step → query → dispatch → trajectory │    │
+│  │       ↑                    │                │    │
+│  │  Middleware Hooks     Tool Executor          │    │
+│  │  (pre_step/post_step)     │                │    │
+│  └───────────────────────────┼────────────────┘    │
+│                              ▼                      │
+│  ┌──────────┬──────────────┬───────────┬─────────┐ │
+│  │   bash   │semantic_search│task_board │delegate │ │
+│  │  (shell) │ (tree-sitter)│(.tasks/)  │(sub-agent)│
+│  └──────────┴──────────────┴───────────┴─────────┘ │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│  Middleware Chain                                     │
+│  ┌───────────────┐ ┌──────────────┐ ┌────────────┐ │
+│  │BashSafety     │ │ContextCompact│ │ Reflection │ │
+│  │(12 risk rules)│ │(LLM summary) │ │(self-review)│ │
+│  └───────────────┘ └──────────────┘ └────────────┘ │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼
+  Trajectory JSONL  →  Dashboard  →  Benchmark Scorecard
+```
+
+### File Map
+
+```
 agent/
-├── app.py              # 应用装配：prompt、工具注册、中间件、CLI
-├── core.py             # Agent loop：run → step → query → dispatch → trajectory
-├── context.py          # System prompt 组装、输出截断、上下文压缩、历史总结
-├── middleware.py        # 沙箱探测、bash 护栏、上下文压缩中间件
-├── models.py           # litellm 统一适配层 (DeepSeek / Anthropic)
+├── app.py              # App assembly: prompt, tools, middleware, streaming, CLI
+├── core.py             # Agent loop (~300 lines): run → step → query → dispatch
+├── context.py          # System prompt assembly, YAML loading, output truncation, compaction
+├── middleware.py        # BashSafety, SandboxAwareness, ContextCompaction, Reflection
+├── models.py           # litellm adapter: query, streaming, retry, fallback chain
 └── tools/
     ├── base.py             # Tool ABC + ToolObservation
-    ├── bash.py             # Shell 执行 (stateless, cross-platform)
-    ├── delegate.py         # 子 agent 隔离委托
-    ├── registry.py         # 工具注册与分发
-    ├── semantic_search.py  # Python 符号搜索 (tree-sitter)
-    └── task_board.py       # 持久化多步任务板 (.tasks/)
+    ├── bash.py             # Stateless shell execution (cross-platform)
+    ├── delegate.py         # Role-based sub-agent delegation (explorer/reviewer/tester)
+    ├── registry.py         # Tool registration and JSON schema dispatch
+    ├── semantic_search.py  # Python symbol search (tree-sitter)
+    └── task_board.py       # Persistent multi-step task board (.tasks/)
 
 scripts/
-├── analyze.py          # 轨迹 JSONL 统计分析
-└── run_scenarios.py    # Demo 场景自动化验收
+├── analyze.py          # Trajectory JSONL statistics
+├── benchmark.py        # Benchmark evaluation harness (pass@1 scorecard)
+├── compare_prompts.py  # Prompt version A/B comparison
+├── dashboard.py        # Terminal ASCII dashboard for trajectories
+└── run_scenarios.py    # Demo scenario automated verification
 
-demo/bug_scenarios/     # Bug 场景模板 (带 verify.py)
-examples/fix_bug.py     # 端到端 demo
-main.py                 # CLI 入口
+prompts/                # Versioned system prompts (YAML)
+├── v1.yaml             # Original 6-step workflow
+└── v2.yaml             # Strict minimal variant
+
+demo/bug_scenarios/     # 6 bug scenario templates (with verify.py)
+benchmarks/             # 5 self-contained benchmark instances
+tests/                  # 74 offline tests (no API key needed)
+main.py                 # CLI entry point
 ```
 
 ---
 
-## 关键设计
+## Key Design Decisions
 
-### 1. Shell-first
+### 1. Shell-first (no file_editor)
 
-没有独立的 `file_editor` 工具。所有文件操作通过 `bash` 完成 —— 用 `sed`、`cat <<'EOF'`、或内联 `python -c` 编辑文件。Prompt 提供跨平台编辑示例。
+No standalone `file_editor` tool. All file read/write goes through `bash` — using `sed`, `cat <<'EOF'`, or inline `python -c`. The prompt provides cross-platform editing examples.
 
-### 2. 6 步工作流
+**Why:** Migrated from [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent)'s philosophy — one general-purpose mutation tool beats multiple specialized ones. Fewer tools = fewer schema errors = more reliable agent behavior.
 
-运行时 prompt 强制模型按严格顺序执行，迁移自 [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) 的 workflow-first 思想：
+### 2. 6-Step Workflow Discipline
+
+The system prompt enforces a strict action order:
 
 ```
-1. ANALYZE   — 阅读相关文件、搜索符号
-2. REPRODUCE — 先跑失败用例，看到具体报错
-3. FIX       — 做最小修改
-4. VERIFY    — 重跑失败用例确认修复
-5. EDGE CASES — 测试边界条件
-6. FINISH    — 总结变更，停止调用工具
+1. ANALYZE   — Read files, search symbols
+2. REPRODUCE — Run the failing case, see the exact error
+3. FIX       — Minimal edit via shell
+4. VERIFY    — Re-run the failing command
+5. EDGE CASES — Test boundaries
+6. FINISH    — Summarize, stop calling tools
 ```
 
-### 3. 中间件安全
+Each step must do **exactly one thing**: call a tool or return the final answer. No mixing narrative with tool calls.
 
-`middleware.py` 负责三件事，不侵入 `core.py`：
+### 3. Middleware Safety (not in the loop)
 
-| 中间件 | 职责 |
-|--------|------|
-| `BashSafetyMiddleware` | 拦截 `rm -rf /`、`sudo`、`git reset --hard` 等高风险命令 |
-| `SandboxAwarenessMiddleware` | 探测运行环境并注入约束信息到 prompt |
-| `ContextCompactionMiddleware` | 压缩旧工具输出，阈值触发时归档到 `.transcripts/` 并总结历史 |
+All safety and context management lives in `middleware.py` via `pre_step`/`post_step` hooks. `core.py` stays at ~300 lines.
 
-### 4. 多步任务持久化
+| Middleware | Responsibility |
+|-----------|---------------|
+| `BashSafetyMiddleware` | Block `rm -rf /`, `sudo`, `git reset --hard`, etc. (12 regex patterns) |
+| `SandboxAwarenessMiddleware` | Probe runtime environment, inject constraints into prompt |
+| `ContextCompactionMiddleware` | Compact old tool outputs, LLM-summarize history, archive transcripts |
+| `ReflectionMiddleware` | Self-critique before finishing (inspired by [Reflexion](https://github.com/noahshinn/reflexion)) |
 
-`task_board` 将任务写入 `.tasks/*.json`，支持依赖图。上下文压缩后计划不会丢失。
+### 4. Self-Reflection
 
-### 5. 格式错误自恢复
+When the agent is about to finish (text-only response, no tool calls), `ReflectionMiddleware` intercepts and injects a self-critique prompt: "Did you verify? Edge cases? Rate confidence 1-5." The agent gets one more iteration to catch shallow patches.
 
-当模型产生无效工具调用时，`core.py` 会注入纠正反馈让模型重试（最多 2 次），而非直接终止。
+### 5. Multi-Agent Orchestration
+
+`DelegateTool` supports role-based sub-agents without a complex framework:
+
+| Role | Focus |
+|------|-------|
+| `explorer` (default) | Code investigation, find files and patterns |
+| `reviewer` | Quality check: correctness, edge cases, side effects |
+| `tester` | Test execution, coverage, verification |
+
+Each role gets a specialized system prompt. Sub-agents run in isolated context. Inspired by [CrewAI](https://github.com/crewAIInc/crewAI)'s role-based approach, but implemented as a single tool call.
+
+### 6. Structured Observability
+
+Trajectory JSONL includes per-step timing (`wall_time_ms`), tool names, and token breakdown. The terminal dashboard (`scripts/dashboard.py`) renders:
+
+- Step timeline (ASCII bar chart by wall time)
+- Tool frequency histogram
+- Cumulative cost curve
+- Decision summary
+
+### 7. API Resilience
+
+- **Retry with exponential backoff** (tenacity): handles `RateLimitError`, `ServiceUnavailableError`, `Timeout`
+- **Model fallback chain** (`FallbackModel`): primary model fails → try secondary. Same `query()` interface, `core.py` is unaware.
+- **Streaming output**: token-by-token terminal display via `litellm.completion(stream=True)`, UI-only — loop contract unchanged.
+
+### 8. Prompt Versioning
+
+System prompts are stored as YAML files in `prompts/`. Runtime selection via `AGENT_PROMPT_VERSION=v2` or `--prompt-version v2`. Cross-version comparison with `scripts/compare_prompts.py`.
 
 ---
 
-## Demo 场景
+## Demo Scenarios
 
-| 场景 | 类型 | 描述 |
-|------|------|------|
-| `zero_division` | 运行时异常 | `average([])` 应返回 0.0 而非 ZeroDivisionError |
-| `trailing_window` | Off-by-one | `trailing_window(items, 3)` 应返回 3 个元素 |
-| `loyalty_checkout` | 多文件业务错误 | 未知客户等级应无折扣 |
+| Scenario | Type | Description |
+|----------|------|-------------|
+| `zero_division` | Runtime exception | `average([])` should return 0.0, not ZeroDivisionError |
+| `trailing_window` | Off-by-one | `trailing_window(items, 3)` should return 3 elements |
+| `loyalty_checkout` | Multi-file logic | Unknown customer tier should get no discount |
+| `type_error` | Type error | `int + str` concatenation failure |
+| `import_cycle` | Circular import | Multi-file circular dependency |
+| `missing_return` | Control flow | Function missing return statement |
 
-每个场景包含 `scenario.json`（描述 + 验收命令）、业务源码、`verify.py`。
+### Benchmark Instances
+
+| Instance | Bug Type | Source Pattern |
+|----------|----------|---------------|
+| `dict_merge_overwrite` | Shallow copy mutation | Django settings merging |
+| `csv_quoting` | Missing field quoting | Data processing libraries |
+| `datetime_edge` | Off-by-one in date math | Scheduling libraries |
+| `regex_escape` | Unescaped regex specials | Search utilities |
+| `recursion_depth` | RecursionError on deep input | Data transformation |
 
 ---
 
-## 测试
+## Testing
 
 ```bash
-pytest tests/ -v                         # 58 项离线测试，无需 API key
-python scripts/analyze.py trajectories/  # 轨迹统计
+pytest tests/ -v                                # 74 offline tests, no API key needed
+python scripts/run_scenarios.py                 # 6/6 scenarios against real API
+python scripts/benchmark.py                     # 5-instance benchmark scorecard
+python scripts/dashboard.py trajectories/       # Terminal dashboard
+python scripts/analyze.py trajectories/         # Trajectory statistics
 ```
 
 ---
 
-## 运行产物
+## Runtime Artifacts
 
-| 路径 | 内容 |
-|------|------|
-| `trajectories/*.jsonl` | 每轮 step / exit 轨迹 |
-| `.tasks/*.json` | 多步任务状态 |
-| `.transcripts/*.jsonl` | 上下文压缩前的完整历史 |
+| Path | Content |
+|------|---------|
+| `trajectories/*.jsonl` | Per-step trajectory (timing, tools, cost, tokens) |
+| `.tasks/*.json` | Multi-step task state (survives context compression) |
+| `.transcripts/*.jsonl` | Full history archived before LLM summarization |
+| `benchmarks/results/*.json` | Benchmark scorecard results |
 
 ---
 
-## 参考项目
+## Metrics
 
-- [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) — workflow-first prompt 节奏
-- [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk) — tool schema / delegate pattern
-- [DeepAgents](https://github.com/deepseek-ai/DeepAgents) — middleware 组合方式
-- [serena](https://github.com/oraios/serena) — symbol-first 检索思路
+| Metric | Value |
+|--------|-------|
+| Core loop (core.py) | ~300 lines |
+| Total agent code | ~2800 lines |
+| Tests | 74 (all offline) |
+| Tools | 4 (bash, semantic_search, task_board, delegate) |
+| Middleware | 4 (safety, sandbox, compaction, reflection) |
+| Demo scenarios | 6 |
+| Benchmark instances | 5 |
+| Prompt versions | 2 (YAML-based, A/B comparable) |
+
+---
+
+## References
+
+| Project | Influence |
+|---------|-----------|
+| [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) | Workflow-first prompt discipline |
+| [Reflexion](https://github.com/noahshinn/reflexion) | Self-reflection loop design |
+| [CrewAI](https://github.com/crewAIInc/crewAI) | Role-based multi-agent pattern |
+| [promptfoo](https://github.com/promptfoo/promptfoo) | Prompt versioning & A/B testing |
+| [SWE-bench](https://github.com/princeton-nlp/SWE-bench) | Benchmark evaluation methodology |
+| [phoenix (Arize)](https://github.com/Arize-AI/phoenix) | LLM trace observability |
+| [litellm](https://github.com/BerriAI/litellm) | Unified LLM adapter, router/fallback |
+| [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk) | Tool schema / delegate pattern |
+| [serena](https://github.com/oraios/serena) | Symbol-first code search |

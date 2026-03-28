@@ -73,7 +73,7 @@ def test_successful_delegation(make_model):
     obs = tool.execute({"task": "Summarize the project."})
 
     assert obs.success
-    assert obs.output == "Analysis complete."
+    assert "Analysis complete." in obs.output
 
 
 # ---------------------------------------------------------------------------
@@ -110,11 +110,12 @@ def test_child_history_isolated_from_parent():
     obs = tool.execute({"task": "do something"})
 
     assert obs.success
-    # 子 agent 第一次 query 时只应有 1 条消息（user task）
+    # 子 agent 第一次 query 时应有 system prompt + user task
     first_query_messages = cap.received[0]
-    assert len(first_query_messages) == 1
-    assert first_query_messages[0]["role"] == "user"
-    assert first_query_messages[0]["content"] == "do something"
+    assert len(first_query_messages) == 2
+    assert first_query_messages[0]["role"] == "system"
+    assert first_query_messages[1]["role"] == "user"
+    assert first_query_messages[1]["content"] == "do something"
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +129,38 @@ def test_context_appended_to_task():
 
     tool.execute({"task": "Analyze files.", "context": "Focus on /tmp/src"})
 
-    user_content = cap.received[0][0]["content"]
+    user_content = cap.received[0][1]["content"]
     assert "Analyze files." in user_content
     assert "Focus on /tmp/src" in user_content
+
+
+# ---------------------------------------------------------------------------
+# role 参数
+# ---------------------------------------------------------------------------
+
+def test_role_parameter_sets_system_prompt():
+    """role='reviewer' → 子 agent 收到 reviewer 专属 system prompt。"""
+    cap = _CapturingModel()
+    tool = DelegateTool(model=cap)
+
+    tool.execute({"task": "Review the fix.", "role": "reviewer"})
+
+    # First message should be system with reviewer prompt
+    system_msg = cap.received[0][0]
+    assert system_msg["role"] == "system"
+    assert "code reviewer" in system_msg["content"].lower()
+
+
+def test_role_default_is_explorer():
+    """不指定 role → 默认 explorer。"""
+    cap = _CapturingModel()
+    tool = DelegateTool(model=cap)
+
+    obs = tool.execute({"task": "Look around."})
+
+    system_msg = cap.received[0][0]
+    assert system_msg["role"] == "system"
+    assert "explorer" in system_msg["content"].lower()
+
+    # Output is prefixed with role
+    assert "[explorer]" in obs.output

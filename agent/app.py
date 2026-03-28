@@ -10,6 +10,7 @@ Streaming support:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import time
@@ -17,9 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from dotenv import load_dotenv
 
-from agent.context import build_local_code_assistant_prompt, truncate_output
+from agent.context import ContextBuilder, build_local_code_assistant_prompt, truncate_output
 from agent.core import Agent
 from agent.middleware import (
     BashSafetyMiddleware,
@@ -50,6 +53,7 @@ class AppConfig:
     fallback_model_name: str | None = None
     streaming: bool = True
     enable_reflection: bool = True
+    prompt_version: str | None = None
 
     @classmethod
     def from_env(cls, work_dir: str | Path | None = None) -> "AppConfig":
@@ -69,6 +73,7 @@ class AppConfig:
             fallback_model_name=os.getenv("FALLBACK_MODEL_NAME"),
             streaming=os.getenv("AGENT_STREAMING", "1") not in ("0", "false", "no"),
             enable_reflection=os.getenv("AGENT_REFLECTION", "1") not in ("0", "false", "no"),
+            prompt_version=os.getenv("AGENT_PROMPT_VERSION"),
         )
 
 
@@ -204,10 +209,26 @@ class LocalCodeAssistantApp:
 
         sandbox = detect_sandbox(config.work_dir)
         sandbox_summary = sandbox.render()
-        system_prompt = build_local_code_assistant_prompt(
-            work_dir=config.work_dir,
-            sandbox_summary=sandbox_summary,
-        )
+
+        # Prompt version: use YAML file if specified, otherwise built-in
+        if config.prompt_version:
+            prompts_dir = Path(__file__).resolve().parent.parent / "prompts"
+            yaml_path = prompts_dir / f"{config.prompt_version}.yaml"
+            if yaml_path.is_file():
+                builder = ContextBuilder.from_yaml(
+                    yaml_path, work_dir=config.work_dir, sandbox_summary=sandbox_summary,
+                )
+                system_prompt = builder.build()
+            else:
+                logger.warning("Prompt version %s not found at %s, using default.", config.prompt_version, yaml_path)
+                system_prompt = build_local_code_assistant_prompt(
+                    work_dir=config.work_dir, sandbox_summary=sandbox_summary,
+                )
+        else:
+            system_prompt = build_local_code_assistant_prompt(
+                work_dir=config.work_dir,
+                sandbox_summary=sandbox_summary,
+            )
 
         main_registry = ToolRegistry()
         main_registry.register(BashTool(work_dir=config.work_dir))

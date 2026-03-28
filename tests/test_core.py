@@ -179,6 +179,33 @@ def test_trajectory_saved_on_failure(make_model, recording_executor, tmp_path):
     assert exit_entries[0]["exit"]["status"] == "LimitsExceeded"
 
 
+def test_trajectory_includes_timing_fields(make_model, recording_executor, tmp_path):
+    """Trajectory entries include wall_time_ms and tool_names fields."""
+    traj_path = tmp_path / "traj_timing.jsonl"
+    model = make_model([
+        tool_call_response("bash", {"command": "ls"}, call_id="c1"),
+        text_response("Done."),
+    ])
+    agent = Agent(
+        model,
+        tool_executor=recording_executor,
+        trajectory_path=traj_path,
+    )
+    agent.run([{"role": "user", "content": "go"}])
+
+    entries = _read_jsonl(traj_path)
+    step_entries = [e for e in entries if "step" in e]
+    assert len(step_entries) == 2
+
+    # First step has tool call
+    assert "wall_time_ms" in step_entries[0]
+    assert isinstance(step_entries[0]["wall_time_ms"], (int, float))
+    assert step_entries[0]["tool_names"] == ["bash"]
+
+    # Second step has no tool calls
+    assert step_entries[1]["tool_names"] == []
+
+
 def test_middleware_hooks_order(make_model, recording_executor):
     """pre_step 在 query 前，post_step 在 dispatch 后；均被调用。"""
     from agent.middleware import Middleware

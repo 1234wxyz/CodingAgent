@@ -44,7 +44,7 @@ def discover_scenarios(filter_name: str | None = None) -> list[Path]:
     return scenarios
 
 
-def run_scenario(scenario_dir: Path, step_limit: int, cost_limit: float) -> ScenarioResult:
+def run_scenario(scenario_dir: Path, step_limit: int, cost_limit: float, prompt_version: str | None = None) -> ScenarioResult:
     """Copy scenario to temp workspace, run agent, verify, return result."""
     from agent.app import AppConfig, LocalCodeAssistantApp
 
@@ -59,6 +59,8 @@ def run_scenario(scenario_dir: Path, step_limit: int, cost_limit: float) -> Scen
     config = AppConfig.from_env(work_dir=work_dir)
     config.step_limit = step_limit
     config.cost_limit = cost_limit
+    if prompt_version:
+        config.prompt_version = prompt_version
 
     try:
         app = LocalCodeAssistantApp.build(config=config, ui=None)
@@ -120,6 +122,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="List scenarios without running")
     parser.add_argument("--step-limit", type=int, default=20, help="Max steps per scenario")
     parser.add_argument("--cost-limit", type=float, default=3.0, help="Max cost (USD) per scenario")
+    parser.add_argument("--prompt-version", type=str, default=None, help="Use versioned prompt (e.g., v1, v2)")
     args = parser.parse_args()
 
     load_dotenv(override=False)
@@ -142,7 +145,7 @@ def main() -> int:
         print(f"\n{'='*60}")
         print(f"Running: {meta['name']} — {meta['title']}")
         print(f"{'='*60}")
-        r = run_scenario(s, step_limit=args.step_limit, cost_limit=args.cost_limit)
+        r = run_scenario(s, step_limit=args.step_limit, cost_limit=args.cost_limit, prompt_version=args.prompt_version)
         results.append(r)
         icon = "PASS" if r.status == "pass" else "FAIL" if r.status == "fail" else "ERR"
         print(f"  [{icon}] {r.name}  agent={r.agent_status}  steps={r.steps}  cost=${r.cost:.4f}")

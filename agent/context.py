@@ -51,6 +51,41 @@ class ContextBuilder:
             self._sections.append(text.strip())
         return self
 
+    @classmethod
+    def from_yaml(
+        cls,
+        yaml_path: str | Path,
+        work_dir: str | Path | None = None,
+        sandbox_summary: str = "",
+    ) -> "ContextBuilder":
+        """Load prompt sections from a versioned YAML file.
+
+        The YAML file should have a 'sections' mapping where each key is a
+        section name and the value is the prompt text. Supports {work_dir}
+        placeholder substitution.
+
+        Reference: inspired by promptfoo's YAML-first prompt management.
+        """
+        import yaml
+
+        yaml_path = Path(yaml_path)
+        with yaml_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        work_dir_str = str(Path(work_dir).resolve()) if work_dir else "."
+        builder = cls(work_dir=work_dir)
+
+        sections = data.get("sections", {})
+        for _name, text in sections.items():
+            if text and isinstance(text, str):
+                rendered = text.replace("{work_dir}", work_dir_str)
+                builder.add_section(rendered)
+
+        if sandbox_summary.strip():
+            builder.add_section("Execution environment:\n" + sandbox_summary.strip())
+
+        return builder
+
     def build(self) -> str:
         parts: list[str] = list(self._sections)
         injected = self._load_context_file()
