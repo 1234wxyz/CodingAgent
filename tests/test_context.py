@@ -48,6 +48,25 @@ def test_build_local_code_assistant_prompt_mentions_shell_first_tools(tmp_path):
     assert "sandbox_mode=workspace-write" in prompt
 
 
+def test_build_prompt_has_explicit_workflow_steps(tmp_path):
+    prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
+
+    assert "ANALYZE" in prompt
+    assert "REPRODUCE" in prompt
+    assert "VERIFY" in prompt
+    assert "EDGE CASES" in prompt
+    assert "FINISH" in prompt
+    assert "Workflow" in prompt
+
+
+def test_build_prompt_has_shell_edit_examples(tmp_path):
+    prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
+
+    assert "sed -i" in prompt
+    assert "cat >" in prompt
+    assert "stateless" in prompt.lower()
+
+
 def test_micro_compact_tool_messages_keeps_recent_results():
     messages = [
         {"role": "assistant", "tool_calls": [{"id": "c1", "name": "bash", "arguments": {}}]},

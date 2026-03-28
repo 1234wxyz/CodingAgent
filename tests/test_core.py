@@ -99,16 +99,34 @@ def test_cost_limit_exceeded(make_model, recording_executor):
     assert result["total_steps"] == 1
 
 
-def test_format_error_no_executor(make_model):
-    """tool_executor=None + 有 tool_calls → FormatError。"""
+def test_format_error_no_executor_after_retries(make_model):
+    """tool_executor=None + 3 consecutive tool_calls → FormatError after 2 retries."""
     model = make_model([
-        tool_call_response("bash", {"command": "ls"}),
+        tool_call_response("bash", {"command": "ls"}, call_id="c1"),
+        tool_call_response("bash", {"command": "ls"}, call_id="c2"),
+        tool_call_response("bash", {"command": "ls"}, call_id="c3"),
     ])
     agent = Agent(model, tool_executor=None)
 
     result = agent.run([{"role": "user", "content": "run something"}])
 
     assert result["status"] == "FormatError"
+    # First 2 attempts got corrective feedback, 3rd raised FormatError
+    assert agent.n_steps == 3
+
+
+def test_format_error_retry_then_submit(make_model):
+    """tool_executor=None: model retries once with tool_call, then submits text → Submitted."""
+    model = make_model([
+        tool_call_response("bash", {"command": "ls"}, call_id="c1"),
+        text_response("I'll answer without tools."),
+    ])
+    agent = Agent(model, tool_executor=None)
+
+    result = agent.run([{"role": "user", "content": "run something"}])
+
+    assert result["status"] == "Submitted"
+    assert result["final_content"] == "I'll answer without tools."
 
 
 def test_trajectory_saved_on_success(make_model, recording_executor, tmp_path):

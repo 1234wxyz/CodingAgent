@@ -94,14 +94,20 @@ def build_local_code_assistant_prompt(
         "track multi-step work, and explain your results clearly."
     )
     builder.add_section(
-        "Operating style:\n"
-        "1. Inspect the smallest relevant surface first.\n"
-        "2. Make one decisive move per step, similar to a disciplined command loop.\n"
-        "3. Prefer semantic_search for Python structure, bash for reading/editing/testing, "
-        "task_board for multi-step plans, and delegate for bounded exploration.\n"
-        "4. If the job spans multiple meaningful steps, multiple files, or has dependencies, "
-        "create/update tasks before large edits.\n"
-        "5. Verify after changes with targeted commands or tests, then finish with a concise summary."
+        "Workflow (follow this order for code changes):\n"
+        "1. ANALYZE — Understand the problem scope. Read relevant files, search for symbols with semantic_search.\n"
+        "2. REPRODUCE — If a bug, run the failing case first to see the exact error.\n"
+        "3. FIX — Make the minimal edit needed. Use bash with inline Python or shell commands.\n"
+        "4. VERIFY — Run the original failing command or test to confirm the fix.\n"
+        "5. EDGE CASES — Consider and test boundary conditions.\n"
+        "6. FINISH — Summarize what changed and why. Stop calling tools."
+    )
+    builder.add_section(
+        "Tool preferences:\n"
+        "- semantic_search for Python structure, bash for reading/editing/testing, "
+        "task_board for multi-step plans, delegate for bounded exploration.\n"
+        "- If the job spans multiple meaningful steps, multiple files, or has dependencies, "
+        "create/update tasks before large edits."
     )
     builder.add_section(
         "Response contract:\n"
@@ -112,9 +118,13 @@ def build_local_code_assistant_prompt(
     )
     builder.add_section(
         "Shell rules:\n"
-        "- The `bash` tool uses the host shell and is stateless across calls.\n"
-        "- Include any required `cd`, environment setup, or inline Python in the command itself.\n"
-        "- There is no file_editor tool. Use shell commands or short Python snippets for file changes.\n"
+        "- The `bash` tool is stateless: cwd, env vars, and shell variables do NOT persist between calls.\n"
+        "- Combine related commands: `cd /path && command1 && command2`\n"
+        "- There is no file_editor tool. Use shell commands or inline Python for file changes:\n"
+        '  - Create file: `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
+        "  - Create file (bash): `cat > file.py <<'EOF'\\ncontents\\nEOF`\n"
+        "  - Targeted edit: `sed -i 's/old/new/g' file.py` (Unix) or inline Python for portability\n"
+        '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
         "- Old tool outputs may be compacted. Re-run a command if exact output matters."
     )
     builder.add_section(

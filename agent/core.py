@@ -85,6 +85,7 @@ class Agent:
         self.messages: list[dict[str, Any]] = []
         self.total_cost: float = 0.0
         self.n_steps: int = 0
+        self._no_executor_retries: int = 0
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -103,6 +104,7 @@ class Agent:
         self.messages = list(messages)
         self.total_cost = 0.0
         self.n_steps = 0
+        self._no_executor_retries = 0
 
         exit_status = "unknown"
         exit_exc: Exception | None = None
@@ -157,12 +159,14 @@ class Agent:
         self.total_cost += cost
 
         # 归一化：确保 messages 里存入的 assistant 消息不含 cost/usage 冗余字段
-        # 保留 role / content / tool_calls，供下游消费
+        # 保留 role / content / tool_calls / _normalized_tool_calls，供下游消费
         clean_msg = {
             "role": assistant_msg["role"],
             "content": assistant_msg.get("content"),
             "tool_calls": assistant_msg.get("tool_calls", []),
         }
+        if "_normalized_tool_calls" in assistant_msg:
+            clean_msg["_normalized_tool_calls"] = assistant_msg["_normalized_tool_calls"]
         self.messages.append(clean_msg)
 
         step_new_messages = [clean_msg]
@@ -203,10 +207,22 @@ class Agent:
             raise Submitted("No tool calls — task complete.")
 
         if self.tool_executor is None:
-            raise FormatError(
-                f"Model requested tool calls but tool_executor is None. "
-                f"Tools requested: {[tc.get('name') for tc in tool_calls]}"
-            )
+            self._no_executor_retries += 1
+            if self._no_executor_retries > 2:
+                raise FormatError(
+                    f"Model requested tool calls but tool_executor is None "
+                    f"(after {self._no_executor_retries} retries). "
+                    f"Tools requested: {[tc.get('name') for tc in tool_calls]}"
+                )
+            for tc in tool_calls:
+                feedback = {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": "ERROR: No tools are available. Please respond with text only.",
+                }
+                self.messages.append(feedback)
+                step_new_messages.append(feedback)
+            return
 
         for tc in tool_calls:
             tool_name = tc.get("name", "")

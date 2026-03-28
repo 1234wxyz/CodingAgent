@@ -157,12 +157,12 @@ class LocalCodeAssistantApp:
         )
 
         main_registry = ToolRegistry()
-        main_registry.register(BashTool())
+        main_registry.register(BashTool(work_dir=config.work_dir))
         main_registry.register(SemanticSearchTool())
         main_registry.register(TaskBoardTool(tasks_dir=config.tasks_dir))
 
         sub_registry = ToolRegistry()
-        sub_registry.register(BashTool())
+        sub_registry.register(BashTool(work_dir=config.work_dir))
         sub_registry.register(SemanticSearchTool())
         sub_registry.register(TaskBoardTool(tasks_dir=config.tasks_dir))
 
@@ -251,7 +251,14 @@ class LocalCodeAssistantApp:
 
 
 def main() -> int:
-    config = AppConfig.from_env()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Local coding assistant")
+    parser.add_argument("--task", help="Single-shot task (non-interactive mode)")
+    parser.add_argument("--work-dir", help="Working directory (default: cwd)")
+    args = parser.parse_args()
+
+    config = AppConfig.from_env(work_dir=args.work_dir)
     ui = TerminalUI()
 
     try:
@@ -260,6 +267,20 @@ def main() -> int:
         ui.print_error(f"Failed to start assistant: {e}")
         return 1
 
+    # Single-shot mode: run one task and exit
+    if args.task:
+        history = app.initial_messages()
+        try:
+            history, result, trajectory_path = app.run_turn(history, args.task)
+        except Exception as e:
+            ui.print_error(f"Run failed: {e}")
+            return 1
+        ui.print_status(result, trajectory_path)
+        if result.get("final_content"):
+            ui.print_assistant(result["final_content"])
+        return 0 if result.get("status") == "Submitted" else 1
+
+    # Interactive mode
     ui.print_banner(config, app.sandbox_summary)
     history = app.initial_messages()
 
