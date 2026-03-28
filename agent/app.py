@@ -1,5 +1,11 @@
 """
 agent/app.py -- interactive local coding assistant assembly.
+
+Streaming support:
+  - When streaming=True (default for interactive mode), model responses print
+    token-by-token to the terminal. core.py still receives the full message
+    after the stream completes — streaming is UI-only and does not change the
+    agent loop contract.
 """
 
 from __future__ import annotations
@@ -7,7 +13,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +24,7 @@ from agent.core import Agent
 from agent.middleware import (
     BashSafetyMiddleware,
     ContextCompactionMiddleware,
+    ReflectionMiddleware,
     SandboxAwarenessMiddleware,
     detect_sandbox,
 )
@@ -40,6 +47,9 @@ class AppConfig:
     delegate_step_limit: int = 8
     delegate_cost_limit: float = 1.0
     compact_threshold_tokens: int = 12_000
+    fallback_model_name: str | None = None
+    streaming: bool = True
+    enable_reflection: bool = True
 
     @classmethod
     def from_env(cls, work_dir: str | Path | None = None) -> "AppConfig":
@@ -56,6 +66,9 @@ class AppConfig:
             delegate_step_limit=int(os.getenv("AGENT_DELEGATE_STEP_LIMIT", "8")),
             delegate_cost_limit=float(os.getenv("AGENT_DELEGATE_COST_LIMIT", "1.0")),
             compact_threshold_tokens=int(os.getenv("AGENT_COMPACT_THRESHOLD_TOKENS", "12000")),
+            fallback_model_name=os.getenv("FALLBACK_MODEL_NAME"),
+            streaming=os.getenv("AGENT_STREAMING", "1") not in ("0", "false", "no"),
+            enable_reflection=os.getenv("AGENT_REFLECTION", "1") not in ("0", "false", "no"),
         )
 
 
@@ -96,6 +109,15 @@ class TerminalUI:
     def print_assistant(self, content: str) -> None:
         print(f"{Ansi.green}{content}{Ansi.reset}\n")
 
+    def print_stream_chunk(self, text: str) -> None:
+        """Print a streaming text chunk without newline (inline update)."""
+        sys.stdout.write(f"{Ansi.green}{text}{Ansi.reset}")
+        sys.stdout.flush()
+
+    def end_stream(self) -> None:
+        """Finish a streaming line."""
+        print(Ansi.reset)
+
     def print_status(self, result: dict[str, Any], trajectory_path: Path | None) -> None:
         traj = str(trajectory_path) if trajectory_path else "(disabled)"
         print(
@@ -123,6 +145,37 @@ class TracingToolExecutor:
         return observation
 
 
+class StreamingModelWrapper:
+    """Transparently intercept model.query() to stream text chunks to the UI.
+
+    If the underlying model supports query_stream(), use it to print tokens
+    live. Falls back to non-streaming query() if streaming is unavailable.
+    The agent loop always receives the full completed message — streaming
+    is purely a UI concern.
+    """
+
+    def __init__(self, model: Any, ui: TerminalUI) -> None:
+        self._model = model
+        self._ui = ui
+
+    def query(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        if not hasattr(self._model, "query_stream"):
+            return self._model.query(messages)
+        try:
+            final_msg, chunks = self._model.query_stream(messages)
+            has_content = False
+            for chunk in chunks:
+                if chunk:
+                    has_content = True
+                    self._ui.print_stream_chunk(chunk)
+            if has_content:
+                self._ui.end_stream()
+            return final_msg
+        except Exception:
+            # Fall back to non-streaming on any error
+            return self._model.query(messages)
+
+
 class LocalCodeAssistantApp:
     """Owns tool wiring, runtime prompt, and per-turn execution."""
 
@@ -147,7 +200,7 @@ class LocalCodeAssistantApp:
         ui: TerminalUI | None = None,
     ) -> "LocalCodeAssistantApp":
         load_dotenv(override=False)
-        from agent.models import LLMModel
+        from agent.models import FallbackModel, LLMModel
 
         sandbox = detect_sandbox(config.work_dir)
         sandbox_summary = sandbox.render()
@@ -185,11 +238,23 @@ class LocalCodeAssistantApp:
             )
         )
 
-        main_model = LLMModel(
+        # Primary model
+        primary_model = LLMModel(
             model_name=config.model_name,
             model_kwargs={"tools": main_registry.get_schemas()},
             cost_tracking="ignore_errors",
         )
+        # Fallback chain: wrap primary with fallback if configured
+        if config.fallback_model_name:
+            fallback_llm = LLMModel(
+                model_name=config.fallback_model_name,
+                model_kwargs={"tools": main_registry.get_schemas()},
+                cost_tracking="ignore_errors",
+            )
+            main_model: Any = FallbackModel([primary_model, fallback_llm])
+        else:
+            main_model = primary_model
+
         summary_model = LLMModel(
             model_name=config.model_name,
             model_kwargs={},
@@ -203,7 +268,7 @@ class LocalCodeAssistantApp:
         )
         tool_executor = TracingToolExecutor(guarded_executor, ui=ui)
 
-        middlewares = [
+        middlewares: list[Any] = [
             SandboxAwarenessMiddleware(sandbox),
             ContextCompactionMiddleware(
                 summary_model=summary_model,
@@ -211,6 +276,12 @@ class LocalCodeAssistantApp:
                 condense_threshold_tokens=config.compact_threshold_tokens,
             ),
         ]
+        if config.enable_reflection:
+            middlewares.append(ReflectionMiddleware(max_reflections=1))
+
+        # Streaming wrapper: intercepts model.query to show tokens live
+        if config.streaming and ui:
+            main_model = StreamingModelWrapper(main_model, ui)
 
         agent = Agent(
             model=main_model,

@@ -1,0 +1,7 @@
+{
+  "name": "missing_return",
+  "title": "Missing return statement in temperature classifier",
+  "description": "classify_temperature(30) returns None instead of 'hot' because the return keyword is missing in the 25-35 branch. Add the missing return statement.",
+  "target_paths": ["validator.py"],
+  "verify_command": "python verify.py"
+}

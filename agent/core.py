@@ -170,13 +170,27 @@ class Agent:
         self.messages.append(clean_msg)
 
         step_new_messages = [clean_msg]
+        submitted = False
         try:
             self._dispatch(clean_msg, step_new_messages)
+        except Submitted:
+            submitted = True
         finally:
             # 无论 _dispatch 是否 raise（含 Submitted / FormatError），step 都落盘
             self._append_trajectory_step(step_new_messages, cost)
+            msg_count_before = len(self.messages)
             for mw in self.middlewares:
                 mw.post_step(self)
+            msg_count_after = len(self.messages)
+
+        # If a middleware injected new messages (e.g. ReflectionMiddleware),
+        # suppress Submitted so the loop continues with the new messages.
+        if submitted:
+            if msg_count_after > msg_count_before:
+                logger.debug("Submitted suppressed: middleware injected %d new message(s).",
+                             msg_count_after - msg_count_before)
+                return  # continue loop
+            raise Submitted("No tool calls — task complete.")
 
     def _check_limits(self) -> None:
         """在 query 前检查 step / cost 限制。超限则 raise LimitsExceeded。"""

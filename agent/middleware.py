@@ -263,6 +263,52 @@ class ContextCompactionMiddleware(Middleware):
         logger.info("Context condensed before step %s. Transcript: %s", agent.n_steps + 1, archive_path)
 
 
+class ReflectionMiddleware(Middleware):
+    """Auto-review before allowing the agent to finish.
+
+    When the agent produces a text-only response (which normally triggers Submitted),
+    this middleware intercepts the first such response and injects a self-critique
+    prompt, forcing one more loop iteration. On the second text-only response (or
+    after max_reflections), the agent is allowed to finish normally.
+
+    Inspired by Reflexion (Shinn et al. 2023).
+    """
+
+    def __init__(self, max_reflections: int = 1) -> None:
+        self._max_reflections = max_reflections
+        self._reflections_done = 0
+
+    def post_step(self, agent: Any) -> None:
+        if self._reflections_done >= self._max_reflections:
+            return
+
+        # Check if the latest assistant message has no tool calls (about to Submitted)
+        if not agent.messages:
+            return
+        last = agent.messages[-1]
+        if last.get("role") != "assistant":
+            return
+        has_tool_calls = bool(
+            last.get("_normalized_tool_calls") or last.get("tool_calls")
+        )
+        if has_tool_calls:
+            return
+
+        # This is a text-only response — inject reflection prompt
+        self._reflections_done += 1
+        reflection_prompt = (
+            "Before finishing, review your work:\n"
+            "1. Did you verify the fix actually works (ran the test/command)?\n"
+            "2. Are there edge cases you haven't considered?\n"
+            "3. Did you introduce any new issues?\n"
+            "4. Rate your confidence 1-5.\n\n"
+            "If confidence < 4, continue fixing. "
+            "If confidence >= 4, provide your final summary."
+        )
+        agent.messages.append({"role": "user", "content": reflection_prompt})
+        logger.info("ReflectionMiddleware: injected self-critique (round %d)", self._reflections_done)
+
+
 def _probe_write_access(directory: Path) -> bool:
     try:
         directory.mkdir(parents=True, exist_ok=True)
