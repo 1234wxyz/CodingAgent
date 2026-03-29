@@ -165,14 +165,17 @@ class Agent:
         token_breakdown = assistant_msg.get("usage") or {}
 
         # 归一化：确保 messages 里存入的 assistant 消息不含 cost/usage 冗余字段
-        # 保留 role / content / tool_calls / _normalized_tool_calls，供下游消费
-        clean_msg = {
+        # 仅在非空时保留 tool_calls / _normalized_tool_calls，供下游消费
+        clean_msg: dict[str, Any] = {
             "role": assistant_msg["role"],
             "content": assistant_msg.get("content"),
-            "tool_calls": assistant_msg.get("tool_calls", []),
         }
-        if "_normalized_tool_calls" in assistant_msg:
-            clean_msg["_normalized_tool_calls"] = assistant_msg["_normalized_tool_calls"]
+        tc = assistant_msg.get("tool_calls")
+        if tc:
+            clean_msg["tool_calls"] = tc
+        ntc = assistant_msg.get("_normalized_tool_calls")
+        if ntc:
+            clean_msg["_normalized_tool_calls"] = ntc
         self.messages.append(clean_msg)
 
         step_new_messages = [clean_msg]

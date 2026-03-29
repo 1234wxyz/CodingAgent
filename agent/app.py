@@ -20,6 +20,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+import litellm as _litellm_mod  # for exception types
 from dotenv import load_dotenv
 
 from agent.context import ContextBuilder, build_local_code_assistant_prompt, truncate_output
@@ -150,11 +151,21 @@ class TracingToolExecutor:
         return observation
 
 
+# Streaming-transport errors that are safe to retry non-streaming.
+_STREAM_TRANSPORT_ERRORS = (
+    ConnectionError,
+    OSError,
+    _litellm_mod.Timeout,
+    _litellm_mod.ServiceUnavailableError,
+)
+
+
 class StreamingModelWrapper:
     """Transparently intercept model.query() to stream text chunks to the UI.
 
     If the underlying model supports query_stream(), use it to print tokens
-    live. Falls back to non-streaming query() if streaming is unavailable.
+    live. Falls back to non-streaming query() only for transport-level errors
+    and only when no content has been printed yet.
     The agent loop always receives the full completed message — streaming
     is purely a UI concern.
     """
@@ -166,9 +177,9 @@ class StreamingModelWrapper:
     def query(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         if not hasattr(self._model, "query_stream"):
             return self._model.query(messages)
+        has_content = False
         try:
             final_msg, chunks = self._model.query_stream(messages)
-            has_content = False
             for chunk in chunks:
                 if chunk:
                     has_content = True
@@ -176,8 +187,14 @@ class StreamingModelWrapper:
             if has_content:
                 self._ui.end_stream()
             return final_msg
-        except Exception:
-            # Fall back to non-streaming on any error
+        except _STREAM_TRANSPORT_ERRORS as e:
+            if has_content:
+                # Already printed partial output — don't double-fire
+                raise
+            logger.warning(
+                "Streaming transport failed (%s), falling back to non-streaming.",
+                type(e).__name__,
+            )
             return self._model.query(messages)
 
 

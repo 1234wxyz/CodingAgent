@@ -176,3 +176,34 @@ def test_reflection_middleware_injects_once(make_model):
     # Check that reflection prompt was injected
     user_msgs = [m for m in agent.messages if m.get("role") == "user"]
     assert any("confidence" in m.get("content", "").lower() for m in user_msgs)
+
+
+def test_reflection_resets_across_runs(make_model):
+    """Bug 6: ReflectionMiddleware counter resets between agent.run() calls."""
+    from agent.core import Agent
+    from agent.middleware import ReflectionMiddleware
+    from tests.conftest import text_response
+
+    mw = ReflectionMiddleware(max_reflections=1)
+
+    # Run 1: reflection triggers
+    model1 = make_model([
+        text_response("done round 1"),
+        text_response("Confidence 5."),
+    ])
+    agent = Agent(model1, middlewares=[mw])
+    result1 = agent.run([{"role": "user", "content": "fix bug 1"}])
+    assert result1["status"] == "Submitted"
+    assert result1["total_steps"] == 2
+
+    # Run 2: same middleware instance — reflection should trigger again
+    model2 = make_model([
+        text_response("done round 2"),
+        text_response("Confidence 5."),
+    ])
+    agent2 = Agent(model2, middlewares=[mw])
+    result2 = agent2.run([{"role": "user", "content": "fix bug 2"}])
+    assert result2["status"] == "Submitted"
+    assert result2["total_steps"] == 2  # Would be 1 if counter not reset
+    user_msgs = [m for m in agent2.messages if m.get("role") == "user"]
+    assert any("confidence" in m.get("content", "").lower() for m in user_msgs)

@@ -278,6 +278,10 @@ class ReflectionMiddleware(Middleware):
         self._max_reflections = max_reflections
         self._reflections_done = 0
 
+    def pre_step(self, agent: Any) -> None:
+        if agent.n_steps == 0:
+            self._reflections_done = 0
+
     def post_step(self, agent: Any) -> None:
         if self._reflections_done >= self._max_reflections:
             return

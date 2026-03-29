@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_PREFIXES = ("anthropic/", "deepseek/")
 
+# Keys that LLM providers actually accept in message dicts.
+_PROVIDER_KEYS = frozenset({"role", "content", "tool_calls", "tool_call_id", "name"})
+
 
 class ModelConfig(BaseModel):
     model_name: str
@@ -71,6 +74,17 @@ class LLMModel:
             cost_tracking=cost_tracking,
         )
 
+    @staticmethod
+    def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Strip internal fields and empty tool_calls before sending to provider."""
+        cleaned = []
+        for msg in messages:
+            out = {k: v for k, v in msg.items() if k in _PROVIDER_KEYS}
+            if "tool_calls" in out and not out["tool_calls"]:
+                del out["tool_calls"]
+            cleaned.append(out)
+        return cleaned
+
     @retry(
         retry=retry_if_exception_type((
             litellm.RateLimitError,
@@ -92,9 +106,10 @@ class LLMModel:
         Returns:
             统一 assistant_message dict，包含 role/content/tool_calls/usage/cost。
         """
+        clean = self._sanitize_messages(messages)
         response = litellm.completion(
             model=self.config.model_name,
-            messages=messages,
+            messages=clean,
             **self.config.model_kwargs,
         )
         return self._normalize(response)
@@ -112,10 +127,12 @@ class LLMModel:
               - message_holder: 最终将被填充的 assistant_message dict
               - chunk_iter: 产出 text content chunks 的迭代器
         """
+        clean = self._sanitize_messages(messages)
         response = litellm.completion(
             model=self.config.model_name,
-            messages=messages,
+            messages=clean,
             stream=True,
+            stream_options={"include_usage": True},
             **self.config.model_kwargs,
         )
 
@@ -132,8 +149,10 @@ class LLMModel:
         def _iter_chunks() -> Iterator[str]:
             content_parts: list[str] = []
             raw_tool_calls_map: dict[int, dict[str, Any]] = {}
+            last_chunk = None
 
             for chunk in response:
+                last_chunk = chunk
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is None:
                     continue
@@ -181,13 +200,29 @@ class LLMModel:
                 })
             final_msg["_normalized_tool_calls"] = normalized
 
-            # Try to get usage from the last chunk
+            # Extract usage from the final streaming chunk
+            if last_chunk and hasattr(last_chunk, "usage") and last_chunk.usage:
+                usage = last_chunk.usage
+                final_msg["usage"] = {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                    "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                    "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+                }
+
+            # Build synthetic ModelResponse for completion_cost
             try:
-                cost = litellm.completion_cost(
-                    completion_response=response,
-                    model=self.config.model_name,
-                )
-                final_msg["cost"] = float(cost) if cost else 0.0
+                if final_msg["usage"]["total_tokens"] > 0:
+                    synthetic = litellm.ModelResponse()
+                    synthetic.usage = litellm.Usage(
+                        prompt_tokens=final_msg["usage"]["prompt_tokens"],
+                        completion_tokens=final_msg["usage"]["completion_tokens"],
+                        total_tokens=final_msg["usage"]["total_tokens"],
+                    )
+                    cost = litellm.completion_cost(
+                        completion_response=synthetic,
+                        model=self.config.model_name,
+                    )
+                    final_msg["cost"] = float(cost) if cost else 0.0
             except Exception:
                 final_msg["cost"] = 0.0
 

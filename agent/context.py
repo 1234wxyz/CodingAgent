@@ -16,6 +16,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -75,8 +76,14 @@ class ContextBuilder:
         work_dir_str = str(Path(work_dir).resolve()) if work_dir else "."
         builder = cls(work_dir=work_dir)
 
+        platform = sys.platform  # "win32" or "linux"/"darwin"
         sections = data.get("sections", {})
-        for _name, text in sections.items():
+        for name, text in sections.items():
+            # Skip platform-mismatched shell_rules variants
+            if name == "shell_rules_unix" and platform == "win32":
+                continue
+            if name == "shell_rules_win32" and platform != "win32":
+                continue
             if text and isinstance(text, str):
                 rendered = text.replace("{work_dir}", work_dir_str)
                 builder.add_section(rendered)
@@ -141,8 +148,8 @@ def build_local_code_assistant_prompt(
         "Tool preferences:\n"
         "- semantic_search for Python structure, bash for reading/editing/testing, "
         "task_board for multi-step plans, delegate for bounded exploration.\n"
-        "- If the job spans multiple meaningful steps, multiple files, or has dependencies, "
-        "create/update tasks before large edits."
+        "- After ANALYZE, if you identify 2+ files to change or 2+ distinct edits, "
+        "use task_board to create a plan before starting edits."
     )
     builder.add_section(
         "Response contract:\n"
@@ -151,20 +158,34 @@ def build_local_code_assistant_prompt(
         "- Prefer one focused tool call per step; if multiple shell actions belong together, combine them into one bash command.\n"
         "- Only stop calling tools when you have either verified the result or clearly cannot proceed."
     )
-    builder.add_section(
-        "Shell rules:\n"
-        "- The `bash` tool is stateless: cwd, env vars, and shell variables do NOT persist between calls.\n"
-        "- Combine related commands: `cd /path && command1 && command2`\n"
-        "- There is no file_editor tool. Use shell commands or inline Python for file changes:\n"
-        '  - Create file: `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
-        "  - Create file (bash): `cat > file.py <<'EOF'\\ncontents\\nEOF`\n"
-        "  - Targeted edit: `sed -i 's/old/new/g' file.py` (Unix) or inline Python for portability\n"
-        '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
-        "- Old tool outputs may be compacted. Re-run a command if exact output matters."
-    )
+    if sys.platform == "win32":
+        builder.add_section(
+            "Shell rules:\n"
+            "- The `bash` tool is stateless: env vars and shell variables do NOT persist between calls.\n"
+            f"- The working directory is already set to {work_dir}. No need to `cd` unless accessing paths outside it.\n"
+            "- There is no file_editor tool. Use inline Python for all file changes:\n"
+            '  - Create file: `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
+            '  - Targeted edit: `python -c "import pathlib; p=pathlib.Path(\'f.py\'); p.write_text(p.read_text().replace(\'old\',\'new\'))"`\n'
+            '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
+            "- Do NOT use `sed -i`, heredocs (`cat > file <<'EOF'`), or other Unix-specific syntax.\n"
+            "- Old tool outputs may be compacted. Re-run a command if exact output matters."
+        )
+    else:
+        builder.add_section(
+            "Shell rules:\n"
+            "- The `bash` tool is stateless: env vars and shell variables do NOT persist between calls.\n"
+            f"- The working directory is already set to {work_dir}. No need to `cd` unless accessing paths outside it.\n"
+            "- There is no file_editor tool. Use shell commands or inline Python for file changes:\n"
+            '  - Create file: `cat > file.py <<\'EOF\'\\ncontents\\nEOF` or `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
+            "  - Targeted edit: `sed -i 's/old/new/g' file.py` or inline Python for portability\n"
+            '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
+            "- Old tool outputs may be compacted. Re-run a command if exact output matters."
+        )
     builder.add_section(
         "Task rules:\n"
         "- `task_board` stores persistent work items in `.tasks/` so plans survive context compression.\n"
+        "- After ANALYZE, if the fix involves 2+ files or 2+ distinct changes, "
+        "create a task plan with task_board BEFORE making any edits.\n"
         "- Mark tasks in progress when you start them and completed when verification is done.\n"
         "- Keep the task list lightweight and factual."
     )
@@ -289,7 +310,6 @@ def condense_history(
     summary = {
         "role": "assistant",
         "content": f"[Condensed history summary]\n{summary_content}",
-        "tool_calls": [],
     }
 
     result: list[dict[str, Any]] = []

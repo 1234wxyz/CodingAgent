@@ -20,13 +20,19 @@ sections:
     - No narrative before tool calls. Call the tool or answer.
     - If stuck after 3 attempts, summarize what you tried and stop.
 
-  shell_rules: |
+  shell_rules_unix: |
     Shell:
-    - bash is stateless. Always `cd /path && cmd`.
+    - bash is stateless. Working directory is already {work_dir}.
     - No file_editor. Use `sed -i`, `cat >`, or `python -c "..."`.
+    - Long output gets truncated. Re-run if needed.
+
+  shell_rules_win32: |
+    Shell:
+    - bash is stateless. Working directory is already {work_dir}.
+    - No file_editor. Use `python -c "..."` one-liners. No `sed`, no heredocs.
     - Long output gets truncated. Re-run if needed.
 
   task_rules: |
     Tasks:
-    - Use task_board only when work spans 3+ steps.
+    - After READ, if work touches 2+ files or 2+ changes, create tasks first.
     - Keep entries under 10 words each.

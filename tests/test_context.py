@@ -60,11 +60,35 @@ def test_build_prompt_has_explicit_workflow_steps(tmp_path):
 
 
 def test_build_prompt_has_shell_edit_examples(tmp_path):
+    import sys
+    prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
+
+    if sys.platform == "win32":
+        assert "python -c" in prompt
+        assert "Do NOT use" in prompt
+    else:
+        assert "sed -i" in prompt
+        assert "cat >" in prompt
+    assert "stateless" in prompt.lower()
+
+
+def test_build_prompt_windows_no_sed(tmp_path, monkeypatch):
+    import agent.context
+    monkeypatch.setattr(agent.context.sys, "platform", "win32")
+    prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
+
+    # sed -i should only appear in the "Do NOT use" warning, not as an instruction
+    assert "Do NOT use" in prompt
+    assert "Targeted edit: `sed" not in prompt
+    assert "python -c" in prompt
+
+
+def test_build_prompt_unix_has_sed(tmp_path, monkeypatch):
+    import agent.context
+    monkeypatch.setattr(agent.context.sys, "platform", "linux")
     prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
 
     assert "sed -i" in prompt
-    assert "cat >" in prompt
-    assert "stateless" in prompt.lower()
 
 
 def test_context_builder_from_yaml(tmp_path):
@@ -158,3 +182,37 @@ def test_condense_history_includes_archive_path(tmp_path):
     assert condensed[1]["role"] == "assistant"
     assert "condensed summary" in condensed[1]["content"]
     assert str(archive_path) in condensed[1]["content"]
+    # Bug 1 secondary: condensed summary should NOT have empty tool_calls
+    assert "tool_calls" not in condensed[1]
+
+
+def test_build_prompt_task_rules_mention_analyze(tmp_path):
+    """Bug 5: task rules should mention ANALYZE trigger."""
+    prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
+    assert "2+ files" in prompt or "2+" in prompt
+    assert "BEFORE" in prompt
+
+
+def test_from_yaml_skips_wrong_platform_shell_rules(tmp_path, monkeypatch):
+    """Bug 4: from_yaml skips shell_rules_unix on win32."""
+    import agent.context
+    monkeypatch.setattr(agent.context.sys, "platform", "win32")
+
+    yaml_content = (
+        'version: "test"\n'
+        'sections:\n'
+        '  role: |\n'
+        '    Hello.\n'
+        '  shell_rules_unix: |\n'
+        '    Use sed -i for edits.\n'
+        '  shell_rules_win32: |\n'
+        '    Use python -c for edits.\n'
+    )
+    yaml_path = tmp_path / "test.yaml"
+    yaml_path.write_text(yaml_content, encoding="utf-8")
+
+    builder = ContextBuilder.from_yaml(yaml_path, work_dir=tmp_path)
+    prompt = builder.build()
+
+    assert "python -c" in prompt
+    assert "sed -i" not in prompt
