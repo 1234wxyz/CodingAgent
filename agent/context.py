@@ -137,12 +137,16 @@ def build_local_code_assistant_prompt(
     )
     builder.add_section(
         "Workflow (follow this order for code changes):\n"
-        "1. ANALYZE — Understand the problem scope. Read relevant files, search for symbols with semantic_search.\n"
-        "2. REPRODUCE — If a bug, run the failing case first to see the exact error.\n"
-        "3. FIX — Make the minimal edit needed. Use bash with inline Python or shell commands.\n"
-        "4. VERIFY — Run the original failing command or test to confirm the fix.\n"
-        "5. EDGE CASES — Consider and test boundary conditions.\n"
-        "6. FINISH — Summarize what changed and why. Stop calling tools."
+        "1. ANALYZE — Read the scenario/task and inspect only the most relevant files.\n"
+        "2. REPRODUCE — Run the failing verification command first.\n"
+        "3. FIX — Make the smallest change that solves the confirmed problem.\n"
+        "4. VERIFY — Re-run the original failing command or test.\n"
+        "5. FINISH — If verification passes and no concrete unresolved issue remains, "
+        "stop calling tools and summarize the fix.\n"
+        "\n"
+        "Optional:\n"
+        "- EXTRA CHECKS — Only run additional checks if the original verification "
+        "leaves a specific plausible regression or unresolved risk."
     )
     builder.add_section(
         "Tool preferences:\n"
@@ -156,6 +160,7 @@ def build_local_code_assistant_prompt(
         "- Each step must do exactly one of two things: request tool work, or return the final answer.\n"
         "- Do not mix a long narrative with tool calls.\n"
         "- Prefer one focused tool call per step; if multiple shell actions belong together, combine them into one bash command.\n"
+        "- If the original verification passes, prefer finishing immediately.\n"
         "- Only stop calling tools when you have either verified the result or clearly cannot proceed."
     )
     if sys.platform == "win32":
@@ -187,10 +192,10 @@ def build_local_code_assistant_prompt(
     builder.add_section(
         "Task rules:\n"
         "- `task_board` stores persistent work items in `.tasks/` so plans survive context compression.\n"
-        "- After ANALYZE, if the fix involves 2+ files or 2+ distinct changes, "
-        "create a task plan with task_board BEFORE making any edits.\n"
-        "- Mark tasks in progress when you start them and completed when verification is done.\n"
-        "- Keep the task list lightweight and factual."
+        "- Only use task_board when 3+ files must be modified, 3+ concrete edits are required, "
+        "or the work has dependency ordering.\n"
+        "- Do not create tasks for simple single-file or single-edit fixes.\n"
+        "- Mark tasks in progress when you start them and completed when verification is done."
     )
     if sandbox_summary.strip():
         builder.add_section("Execution environment:\n" + sandbox_summary.strip())

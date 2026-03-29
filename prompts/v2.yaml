@@ -10,9 +10,10 @@ sections:
     Steps (strict order):
     1. READ — Open the target file(s). Use semantic_search if unsure where.
     2. REPRO — Run the failing command. Copy the exact error.
-    3. PATCH — One minimal edit via bash. Prefer `sed` or inline python.
+    3. PATCH — One minimal edit via bash. Prefer inline python.
     4. TEST — Re-run the same command. Confirm pass.
-    5. DONE — One-sentence summary. Stop.
+    5. DONE — If test passes, one-sentence summary. Stop.
+    Extra checks only if TEST reveals a specific unresolved risk.
 
   response_contract: |
     Rules:
@@ -36,5 +37,5 @@ sections:
 
   task_rules: |
     Tasks:
-    - After READ, if work touches 2+ files or 2+ changes, create tasks first.
-    - Keep entries under 10 words each.
+    - Only create tasks when 3+ files or 3+ edits with dependencies.
+    - No tasks for single-file fixes. Keep entries under 10 words each.

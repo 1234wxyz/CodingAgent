@@ -45,6 +45,7 @@ def test_build_local_code_assistant_prompt_mentions_shell_first_tools(tmp_path):
     assert "task_board" in prompt
     assert "semantic_search" in prompt
     assert "Each step must do exactly one of two things" in prompt
+    assert "prefer finishing immediately" in prompt
     assert "sandbox_mode=workspace-write" in prompt
 
 
@@ -54,9 +55,11 @@ def test_build_prompt_has_explicit_workflow_steps(tmp_path):
     assert "ANALYZE" in prompt
     assert "REPRODUCE" in prompt
     assert "VERIFY" in prompt
-    assert "EDGE CASES" in prompt
     assert "FINISH" in prompt
     assert "Workflow" in prompt
+    # EDGE CASES removed as mandatory step; extra checks are optional
+    assert "EXTRA CHECKS" in prompt
+    assert "Optional" in prompt
 
 
 def test_build_prompt_has_shell_edit_examples(tmp_path):
@@ -192,11 +195,11 @@ def test_condense_history_includes_archive_path(tmp_path):
     assert "tool_calls" not in condensed[1]
 
 
-def test_build_prompt_task_rules_mention_analyze(tmp_path):
-    """Bug 5: task rules should mention ANALYZE trigger."""
+def test_build_prompt_task_rules_conservative(tmp_path):
+    """Task rules should discourage task_board for trivial fixes."""
     prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
-    assert "2+ files" in prompt or "2+" in prompt
-    assert "BEFORE" in prompt
+    assert "3+" in prompt
+    assert "single-file" in prompt or "single-edit" in prompt
 
 
 def test_from_yaml_skips_wrong_platform_shell_rules(tmp_path, monkeypatch):

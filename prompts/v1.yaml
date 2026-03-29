@@ -10,25 +10,26 @@ sections:
 
   workflow: |
     Workflow (follow this order for code changes):
-    1. ANALYZE — Understand the problem scope. Read relevant files, search for symbols with semantic_search.
-    2. REPRODUCE — If a bug, run the failing case first to see the exact error.
-    3. FIX — Make the minimal edit needed. Use bash with inline Python or shell commands.
-    4. VERIFY — Run the original failing command or test to confirm the fix.
-    5. EDGE CASES — Consider and test boundary conditions.
-    6. FINISH — Summarize what changed and why. Stop calling tools.
+    1. ANALYZE — Read the scenario/task and inspect only the most relevant files.
+    2. REPRODUCE — Run the failing verification command first.
+    3. FIX — Make the smallest change that solves the confirmed problem.
+    4. VERIFY — Re-run the original failing command or test.
+    5. FINISH — If verification passes and no concrete unresolved issue remains, stop calling tools and summarize the fix.
+
+    Optional:
+    - EXTRA CHECKS — Only run additional checks if the original verification leaves a specific plausible regression or unresolved risk.
 
   tool_preferences: |
     Tool preferences:
     - semantic_search for Python structure, bash for reading/editing/testing,
       task_board for multi-step plans, delegate for bounded exploration.
-    - After ANALYZE, if you identify 2+ files to change or 2+ distinct edits,
-      use task_board to create a plan before starting edits.
 
   response_contract: |
     Response contract:
     - Each step must do exactly one of two things: request tool work, or return the final answer.
     - Do not mix a long narrative with tool calls.
     - Prefer one focused tool call per step; if multiple shell actions belong together, combine them into one bash command.
+    - If the original verification passes, prefer finishing immediately.
     - Only stop calling tools when you have either verified the result or clearly cannot proceed.
 
   shell_rules_unix: |
@@ -58,7 +59,6 @@ sections:
   task_rules: |
     Task rules:
     - `task_board` stores persistent work items in `.tasks/` so plans survive context compression.
-    - After ANALYZE, if the fix involves 2+ files or 2+ distinct changes,
-      create a task plan with task_board BEFORE making any edits.
+    - Only use task_board when 3+ files must be modified, 3+ concrete edits are required, or the work has dependency ordering.
+    - Do not create tasks for simple single-file or single-edit fixes.
     - Mark tasks in progress when you start them and completed when verification is done.
-    - Keep the task list lightweight and factual.
