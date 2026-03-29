@@ -29,7 +29,9 @@ sections:
   shell_rules_win32: |
     Shell:
     - bash is stateless. Working directory is already {work_dir}.
-    - No file_editor. Use `python -c "..."` one-liners. No `sed`, no heredocs.
+    - No file_editor. Use `python -c "..."` one-liners.
+    - List files: `dir /b` or `dir /s /b *.py`. Search: `findstr /s /n "pat" *.py`. Print: `type file.py`.
+    - Do NOT use `sed -i`, `grep`, `find . -name`, `xargs`, or heredocs.
     - Long output gets truncated. Re-run if needed.
 
   task_rules: |

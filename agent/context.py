@@ -167,7 +167,10 @@ def build_local_code_assistant_prompt(
             '  - Create file: `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
             '  - Targeted edit: `python -c "import pathlib; p=pathlib.Path(\'f.py\'); p.write_text(p.read_text().replace(\'old\',\'new\'))"`\n'
             '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
-            "- Do NOT use `sed -i`, heredocs (`cat > file <<'EOF'`), or other Unix-specific syntax.\n"
+            "- List files: `dir /b` (flat) or `dir /s /b *.py` (recursive .py files).\n"
+            "- Search text in files: `findstr /s /n \"pattern\" *.py` (not grep).\n"
+            "- Print a file: `type file.py` (not cat).\n"
+            "- Do NOT use `sed -i`, `grep`, `find . -name`, `xargs`, heredocs (`cat > file <<'EOF'`), or other Unix-specific syntax.\n"
             "- Old tool outputs may be compacted. Re-run a command if exact output matters."
         )
     else:

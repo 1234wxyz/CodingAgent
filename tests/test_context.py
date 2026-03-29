@@ -81,6 +81,12 @@ def test_build_prompt_windows_no_sed(tmp_path, monkeypatch):
     assert "Do NOT use" in prompt
     assert "Targeted edit: `sed" not in prompt
     assert "python -c" in prompt
+    # Windows-specific alternatives should be present
+    assert "dir /b" in prompt
+    assert "findstr" in prompt
+    # Unix-specific commands should be forbidden
+    assert "find . -name" in prompt  # mentioned in "Do NOT use" list
+    assert "xargs" in prompt  # mentioned in "Do NOT use" list
 
 
 def test_build_prompt_unix_has_sed(tmp_path, monkeypatch):

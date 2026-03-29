@@ -148,3 +148,58 @@ def test_unknown_command(tool):
 
     assert not obs.success
     assert obs.error
+
+
+# ---------------------------------------------------------------------------
+# work_dir-relative path resolution
+# ---------------------------------------------------------------------------
+
+def test_list_symbols_relative_path_with_work_dir(tmp_path):
+    """list_symbols with a relative path resolved against work_dir (not process cwd)."""
+    src = tmp_path / "calc.py"
+    src.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+
+    tool = SemanticSearchTool(work_dir=tmp_path)
+    obs = tool.execute({"command": "list_symbols", "path": "calc.py"})
+
+    assert obs.success
+    assert "add" in obs.output
+
+
+def test_get_context_relative_path_with_work_dir(tmp_path):
+    """get_context with a relative path resolved against work_dir."""
+    src = tmp_path / "utils.py"
+    src.write_text("def helper():\n    return 42\n", encoding="utf-8")
+
+    tool = SemanticSearchTool(work_dir=tmp_path)
+    obs = tool.execute({"command": "get_context", "path": "utils.py", "line": 1})
+
+    assert obs.success
+    assert "helper" in obs.output
+
+
+def test_find_symbol_relative_directory_with_work_dir(tmp_path):
+    """find_symbol with a relative directory resolved against work_dir."""
+    sub = tmp_path / "src"
+    sub.mkdir()
+    (sub / "mod.py").write_text("def process():\n    pass\n", encoding="utf-8")
+
+    tool = SemanticSearchTool(work_dir=tmp_path)
+    obs = tool.execute({"command": "find_symbol", "name": "process", "directory": "src"})
+
+    assert obs.success
+    assert "process" in obs.output
+
+
+def test_absolute_path_unaffected_by_work_dir(tmp_path):
+    """Absolute paths are used as-is, work_dir does not interfere."""
+    src = tmp_path / "absolute.py"
+    src.write_text("class MyClass:\n    pass\n", encoding="utf-8")
+
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    tool = SemanticSearchTool(work_dir=other_dir)
+    obs = tool.execute({"command": "list_symbols", "path": str(src)})
+
+    assert obs.success
+    assert "MyClass" in obs.output

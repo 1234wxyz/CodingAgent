@@ -53,7 +53,7 @@ class AppConfig:
     compact_threshold_tokens: int = 12_000
     fallback_model_name: str | None = None
     streaming: bool = True
-    enable_reflection: bool = True
+    enable_reflection: bool = False
     prompt_version: str | None = None
 
     @classmethod
@@ -249,12 +249,12 @@ class LocalCodeAssistantApp:
 
         main_registry = ToolRegistry()
         main_registry.register(BashTool(work_dir=config.work_dir))
-        main_registry.register(SemanticSearchTool())
+        main_registry.register(SemanticSearchTool(work_dir=config.work_dir))
         main_registry.register(TaskBoardTool(tasks_dir=config.tasks_dir))
 
         sub_registry = ToolRegistry()
         sub_registry.register(BashTool(work_dir=config.work_dir))
-        sub_registry.register(SemanticSearchTool())
+        sub_registry.register(SemanticSearchTool(work_dir=config.work_dir))
         sub_registry.register(TaskBoardTool(tasks_dir=config.tasks_dir))
 
         sub_model = LLMModel(

@@ -149,6 +149,16 @@ def _find_enclosing_node(root_node, target_line_0based: int):
 class SemanticSearchTool(Tool):
     """Python 符号级语义检索工具（tree-sitter backed）。"""
 
+    def __init__(self, work_dir: Path | None = None) -> None:
+        self._work_dir = Path(work_dir).resolve() if work_dir else None
+
+    def _resolve(self, path_str: str) -> Path:
+        """Resolve path_str against work_dir (if set), else leave as-is."""
+        p = Path(path_str)
+        if not p.is_absolute() and self._work_dir is not None:
+            return self._work_dir / p
+        return p
+
     @property
     def name(self) -> str:
         return "semantic_search"
@@ -232,7 +242,7 @@ class SemanticSearchTool(Tool):
         if not path_str:
             return ToolObservation(output="", success=False, error="Missing argument 'path'.")
 
-        path = Path(path_str)
+        path = self._resolve(path_str)
         tree, source = _parse_file(path)
         if tree is None:
             # 非 Python 或解析失败 → 返回空，不报错
@@ -262,7 +272,7 @@ class SemanticSearchTool(Tool):
         if not symbol_name:
             return ToolObservation(output="", success=False, error="Missing argument 'name'.")
 
-        directory = Path(args.get("directory", "."))
+        directory = self._resolve(args.get("directory", "."))
         if not directory.is_dir():
             return ToolObservation(
                 output="", success=False, error=f"Directory not found: {directory}"
@@ -306,7 +316,7 @@ class SemanticSearchTool(Tool):
         if line_1based is None:
             return ToolObservation(output="", success=False, error="Missing argument 'line'.")
 
-        path = Path(path_str)
+        path = self._resolve(path_str)
         tree, source = _parse_file(path)
         if tree is None:
             return ToolObservation(
