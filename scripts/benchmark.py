@@ -27,6 +27,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+# Ensure UTF-8 output before any print() — fixes Windows box-drawing garble
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from agent.encoding import ensure_utf8_stdio  # noqa: E402
+ensure_utf8_stdio()
+
 from dotenv import load_dotenv
 
 BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "benchmarks"
