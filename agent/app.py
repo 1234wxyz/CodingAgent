@@ -73,7 +73,7 @@ class AppConfig:
             compact_threshold_tokens=int(os.getenv("AGENT_COMPACT_THRESHOLD_TOKENS", "12000")),
             fallback_model_name=os.getenv("FALLBACK_MODEL_NAME"),
             streaming=os.getenv("AGENT_STREAMING", "1") not in ("0", "false", "no"),
-            enable_reflection=os.getenv("AGENT_REFLECTION", "1") not in ("0", "false", "no"),
+            enable_reflection=os.getenv("AGENT_REFLECTION", "0") not in ("0", "false", "no"),
             prompt_version=os.getenv("AGENT_PROMPT_VERSION"),
         )
 

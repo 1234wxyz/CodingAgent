@@ -141,12 +141,12 @@ def build_local_code_assistant_prompt(
         "2. REPRODUCE — Run the failing verification command first.\n"
         "3. FIX — Make the smallest change that solves the confirmed problem.\n"
         "4. VERIFY — Re-run the original failing command or test.\n"
-        "5. FINISH — If verification passes and no concrete unresolved issue remains, "
-        "stop calling tools and summarize the fix.\n"
+        "5. FINISH — The original verification command is the primary success signal. "
+        "If it passes, finish immediately. Stop calling tools and summarize the fix.\n"
         "\n"
         "Optional:\n"
-        "- EXTRA CHECKS — Only run additional checks if the original verification "
-        "leaves a specific plausible regression or unresolved risk."
+        "- EXTRA CHECKS — Only if you identified a specific concrete suspected regression "
+        "before running VERIFY. General curiosity is not sufficient reason."
     )
     builder.add_section(
         "Tool preferences:\n"
@@ -160,7 +160,8 @@ def build_local_code_assistant_prompt(
         "- Each step must do exactly one of two things: request tool work, or return the final answer.\n"
         "- Do not mix a long narrative with tool calls.\n"
         "- Prefer one focused tool call per step; if multiple shell actions belong together, combine them into one bash command.\n"
-        "- If the original verification passes, prefer finishing immediately.\n"
+        "- The original verification command is the primary success signal. "
+        "If it passes, finish immediately unless you identified a specific unresolved issue.\n"
         "- Only stop calling tools when you have either verified the result or clearly cannot proceed."
     )
     if sys.platform == "win32":

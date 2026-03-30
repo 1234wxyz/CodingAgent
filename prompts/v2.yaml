@@ -12,8 +12,8 @@ sections:
     2. REPRO — Run the failing command. Copy the exact error.
     3. PATCH — One minimal edit via bash. Prefer inline python.
     4. TEST — Re-run the same command. Confirm pass.
-    5. DONE — If test passes, one-sentence summary. Stop.
-    Extra checks only if TEST reveals a specific unresolved risk.
+    5. DONE — The original test is the primary success signal. If it passes, one-sentence summary. Stop immediately.
+    Extra checks only if you identified a specific concrete regression before running TEST. General curiosity is not sufficient reason.
 
   response_contract: |
     Rules:

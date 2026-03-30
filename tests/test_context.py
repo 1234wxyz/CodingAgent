@@ -45,7 +45,7 @@ def test_build_local_code_assistant_prompt_mentions_shell_first_tools(tmp_path):
     assert "task_board" in prompt
     assert "semantic_search" in prompt
     assert "Each step must do exactly one of two things" in prompt
-    assert "prefer finishing immediately" in prompt
+    assert "primary success signal" in prompt
     assert "sandbox_mode=workspace-write" in prompt
 
 
@@ -60,6 +60,8 @@ def test_build_prompt_has_explicit_workflow_steps(tmp_path):
     # EDGE CASES removed as mandatory step; extra checks are optional
     assert "EXTRA CHECKS" in prompt
     assert "Optional" in prompt
+    assert "primary success signal" in prompt
+    assert "General curiosity" in prompt
 
 
 def test_build_prompt_has_shell_edit_examples(tmp_path):
