@@ -34,6 +34,7 @@ from agent.middleware import (
 )
 from agent.tools.bash import BashTool
 from agent.tools.delegate import DelegateTool
+from agent.tools.file_edit import FileEditTool
 from agent.tools.registry import ToolRegistry
 from agent.tools.semantic_search import SemanticSearchTool
 from agent.tools.task_board import TaskBoardTool
@@ -249,11 +250,13 @@ class LocalCodeAssistantApp:
 
         main_registry = ToolRegistry()
         main_registry.register(BashTool(work_dir=config.work_dir))
+        main_registry.register(FileEditTool(work_dir=config.work_dir))
         main_registry.register(SemanticSearchTool(work_dir=config.work_dir))
         main_registry.register(TaskBoardTool(tasks_dir=config.tasks_dir))
 
         sub_registry = ToolRegistry()
         sub_registry.register(BashTool(work_dir=config.work_dir))
+        sub_registry.register(FileEditTool(work_dir=config.work_dir))
         sub_registry.register(SemanticSearchTool(work_dir=config.work_dir))
         sub_registry.register(TaskBoardTool(tasks_dir=config.tasks_dir))
 

@@ -191,15 +191,68 @@ def test_find_symbol_relative_directory_with_work_dir(tmp_path):
     assert "process" in obs.output
 
 
-def test_absolute_path_unaffected_by_work_dir(tmp_path):
-    """Absolute paths are used as-is, work_dir does not interfere."""
+def test_absolute_path_outside_work_dir_blocked(tmp_path):
+    """Absolute paths outside work_dir are rejected by boundary check."""
     src = tmp_path / "absolute.py"
     src.write_text("class MyClass:\n    pass\n", encoding="utf-8")
 
-    other_dir = tmp_path / "other"
-    other_dir.mkdir()
-    tool = SemanticSearchTool(work_dir=other_dir)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    tool = SemanticSearchTool(work_dir=sub)
     obs = tool.execute({"command": "list_symbols", "path": str(src)})
 
+    assert not obs.success
+    assert "outside workspace" in obs.error.lower()
+
+
+# ---------------------------------------------------------------------------
+# workspace boundary checks
+# ---------------------------------------------------------------------------
+
+def test_boundary_rejects_path_above_workdir(tmp_path):
+    """list_symbols with relative path escaping work_dir → error."""
+    tool = SemanticSearchTool(work_dir=tmp_path)
+    obs = tool.execute({"command": "list_symbols", "path": "../../../etc/passwd"})
+
+    assert not obs.success
+    assert "outside workspace" in obs.error.lower()
+
+
+def test_boundary_allows_path_within_workdir(tmp_path):
+    """Relative paths inside work_dir work normally."""
+    (tmp_path / "ok.py").write_text("def f(): pass\n", encoding="utf-8")
+    tool = SemanticSearchTool(work_dir=tmp_path)
+    obs = tool.execute({"command": "list_symbols", "path": "ok.py"})
+
     assert obs.success
-    assert "MyClass" in obs.output
+    assert "f" in obs.output
+
+
+def test_find_symbol_rejects_directory_above_workdir(tmp_path):
+    """find_symbol with directory escaping work_dir → error."""
+    sub = tmp_path / "deep" / "nested"
+    sub.mkdir(parents=True)
+    tool = SemanticSearchTool(work_dir=sub)
+    obs = tool.execute({"command": "find_symbol", "name": "foo", "directory": "../../.."})
+
+    assert not obs.success
+    assert "outside workspace" in obs.error.lower()
+
+
+def test_get_context_rejects_path_above_workdir(tmp_path):
+    """get_context with path escaping work_dir → error."""
+    tool = SemanticSearchTool(work_dir=tmp_path)
+    obs = tool.execute({"command": "get_context", "path": "../secret.py", "line": 1})
+
+    assert not obs.success
+    assert "outside workspace" in obs.error.lower()
+
+
+def test_boundary_no_work_dir_allows_everything():
+    """When work_dir is None, no boundary checking occurs."""
+    tool = SemanticSearchTool(work_dir=None)
+    # This will fail because file doesn't exist, but NOT due to boundary
+    obs = tool.execute({"command": "list_symbols", "path": "/nonexistent/file.py"})
+
+    assert obs.success  # returns "No symbols found", not a boundary error
+    assert "not Python" in obs.output or "No symbols" in obs.output

@@ -169,6 +169,62 @@ def assess_bash_command(command: str, sandbox: SandboxInfo | None = None) -> Com
     return CommandVerdict(True)
 
 
+def _check_bash_boundary(command: str, work_dir: str) -> str | None:
+    """Detect bash commands that clearly reference absolute paths outside work_dir.
+
+    Returns a warning string if suspicious, None otherwise.
+    Only flags absolute paths — relative paths are fine (cwd is work_dir).
+    Skips common safe system paths (/dev, /tmp, /usr, C:\\Windows, python paths).
+    """
+    import shlex
+
+    work_dir_norm = os.path.normcase(os.path.abspath(work_dir))
+
+    # Common safe absolute prefixes (not workspace-specific)
+    _SAFE_PREFIXES = (
+        "/dev", "/tmp", "/usr", "/bin", "/sbin", "/etc/ssl",
+        "/proc", "/sys",
+    )
+    _SAFE_PREFIXES_WIN = (
+        "c:\\windows", "c:\\program files", "c:\\users\\",
+    )
+
+    # Extract potential absolute paths from the command
+    # Simple heuristic: split on whitespace and check tokens
+    try:
+        tokens = shlex.split(command, posix=(os.name != "nt"))
+    except ValueError:
+        tokens = command.split()
+
+    for token in tokens:
+        token_norm = os.path.normcase(token)
+
+        # Check if it looks like an absolute path
+        is_abs = False
+        if token.startswith("/") and not token.startswith("//"):
+            is_abs = True
+        elif len(token) >= 3 and token[1] == ":" and token[2] in ("/", "\\"):
+            is_abs = True
+
+        if not is_abs:
+            continue
+
+        # Skip safe system paths
+        if any(token_norm.startswith(p) for p in _SAFE_PREFIXES):
+            continue
+        if os.name == "nt" and any(token_norm.startswith(p) for p in _SAFE_PREFIXES_WIN):
+            continue
+
+        # Check if outside work_dir
+        if not token_norm.startswith(work_dir_norm):
+            return (
+                f"Command references path '{token}' outside workspace '{work_dir}'. "
+                "Prefer relative paths within the workspace."
+            )
+
+    return None
+
+
 class BashSafetyMiddleware:
     """Wrap tool execution and block high-risk shell commands before they run."""
 
@@ -180,6 +236,7 @@ class BashSafetyMiddleware:
     ) -> None:
         self._base = base_executor
         self._sandbox = sandbox_info or detect_sandbox(work_dir=work_dir)
+        self._work_dir: str | None = str(Path(work_dir).resolve()) if work_dir else None
 
     @property
     def sandbox_info(self) -> SandboxInfo:
@@ -194,7 +251,16 @@ class BashSafetyMiddleware:
         if not verdict.allowed:
             return f"Error: Blocked high-risk bash command. Reason: {verdict.reason}"
 
-        return self._base(name, arguments)
+        # Workspace boundary warning (non-blocking)
+        boundary_warning = None
+        if self._work_dir:
+            boundary_warning = _check_bash_boundary(command, self._work_dir)
+
+        result = self._base(name, arguments)
+
+        if boundary_warning:
+            return f"[WARNING: {boundary_warning}]\n{result}"
+        return result
 
 
 class SandboxAwarenessMiddleware(Middleware):

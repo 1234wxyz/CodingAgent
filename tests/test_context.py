@@ -35,13 +35,13 @@ def test_context_builder_injects_claude_file(tmp_path):
     assert "Repo guidance" in result
 
 
-def test_build_local_code_assistant_prompt_mentions_shell_first_tools(tmp_path):
+def test_build_local_code_assistant_prompt_mentions_tools(tmp_path):
     prompt = build_local_code_assistant_prompt(
         work_dir=tmp_path,
         sandbox_summary="sandbox_mode=workspace-write",
     )
 
-    assert "There is no file_editor tool" in prompt
+    assert "file_edit" in prompt
     assert "task_board" in prompt
     assert "semantic_search" in prompt
     assert "Each step must do exactly one of two things" in prompt
@@ -68,12 +68,11 @@ def test_build_prompt_has_shell_edit_examples(tmp_path):
     import sys
     prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
 
+    assert "file_edit" in prompt
     if sys.platform == "win32":
-        assert "python -c" in prompt
         assert "Do NOT use" in prompt
     else:
         assert "sed -i" in prompt
-        assert "cat >" in prompt
     assert "stateless" in prompt.lower()
 
 
@@ -85,13 +84,10 @@ def test_build_prompt_windows_no_sed(tmp_path, monkeypatch):
     # sed -i should only appear in the "Do NOT use" warning, not as an instruction
     assert "Do NOT use" in prompt
     assert "Targeted edit: `sed" not in prompt
-    assert "python -c" in prompt
+    assert "file_edit" in prompt
     # Windows-specific alternatives should be present
     assert "dir /b" in prompt
     assert "findstr" in prompt
-    # Unix-specific commands should be forbidden
-    assert "find . -name" in prompt  # mentioned in "Do NOT use" list
-    assert "xargs" in prompt  # mentioned in "Do NOT use" list
 
 
 def test_build_prompt_unix_has_sed(tmp_path, monkeypatch):
@@ -201,7 +197,8 @@ def test_build_prompt_task_rules_conservative(tmp_path):
     """Task rules should discourage task_board for trivial fixes."""
     prompt = build_local_code_assistant_prompt(work_dir=tmp_path)
     assert "3+" in prompt
-    assert "single-file" in prompt or "single-edit" in prompt
+    assert "Do NOT create tasks" in prompt
+    assert "single-file" in prompt or "simple fixes" in prompt
 
 
 def test_from_yaml_skips_wrong_platform_shell_rules(tmp_path, monkeypatch):

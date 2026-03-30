@@ -24,18 +24,20 @@ sections:
   shell_rules_unix: |
     Shell:
     - bash is stateless. Working directory is already {work_dir}.
-    - No file_editor. Use `sed -i`, `cat >`, or `python -c "..."`.
+    - Use `file_edit` for reading/editing files. Use `bash` for commands/tests.
+    - `sed -i` also works for quick shell edits.
     - Long output gets truncated. Re-run if needed.
 
   shell_rules_win32: |
     Shell:
     - bash is stateless. Working directory is already {work_dir}.
-    - No file_editor. Use `python -c "..."` one-liners.
-    - List files: `dir /b` or `dir /s /b *.py`. Search: `findstr /s /n "pat" *.py`. Print: `type file.py`.
+    - Use `file_edit` for reading/editing files. Use `bash` for commands/tests.
+    - List: `dir /b`, `dir /s /b *.py`. Search: `findstr /s /n "pat" *.py`.
     - Do NOT use `sed -i`, `grep`, `find . -name`, `xargs`, or heredocs.
     - Long output gets truncated. Re-run if needed.
 
   task_rules: |
     Tasks:
     - Only create tasks when 3+ files or 3+ edits with dependencies.
-    - No tasks for single-file fixes. Keep entries under 10 words each.
+    - No tasks for single-file fixes. Analyze and reproduce first.
+    - Keep entries under 10 words each.

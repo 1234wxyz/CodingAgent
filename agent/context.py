@@ -150,10 +150,10 @@ def build_local_code_assistant_prompt(
     )
     builder.add_section(
         "Tool preferences:\n"
-        "- semantic_search for Python structure, bash for reading/editing/testing, "
-        "task_board for multi-step plans, delegate for bounded exploration.\n"
-        "- After ANALYZE, if you identify 2+ files to change or 2+ distinct edits, "
-        "use task_board to create a plan before starting edits."
+        "- file_edit view to read files with line numbers, file_edit replace for targeted text changes.\n"
+        "- Prefer file_edit replace over shell one-liners for code edits — it handles multi-line text reliably.\n"
+        "- bash for running commands, tests, and complex operations.\n"
+        "- semantic_search for Python structure, task_board for multi-step plans, delegate for bounded exploration."
     )
     builder.add_section(
         "Response contract:\n"
@@ -169,13 +169,9 @@ def build_local_code_assistant_prompt(
             "Shell rules:\n"
             "- The `bash` tool is stateless: env vars and shell variables do NOT persist between calls.\n"
             f"- The working directory is already set to {work_dir}. No need to `cd` unless accessing paths outside it.\n"
-            "- There is no file_editor tool. Use inline Python for all file changes:\n"
-            '  - Create file: `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
-            '  - Targeted edit: `python -c "import pathlib; p=pathlib.Path(\'f.py\'); p.write_text(p.read_text().replace(\'old\',\'new\'))"`\n'
-            '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
+            "- Use `file_edit` for reading and editing files. Use `bash` for running commands and tests.\n"
             "- List files: `dir /b` (flat) or `dir /s /b *.py` (recursive .py files).\n"
             "- Search text in files: `findstr /s /n \"pattern\" *.py` (not grep).\n"
-            "- Print a file: `type file.py` (not cat).\n"
             "- Do NOT use `sed -i`, `grep`, `find . -name`, `xargs`, heredocs (`cat > file <<'EOF'`), or other Unix-specific syntax.\n"
             "- Old tool outputs may be compacted. Re-run a command if exact output matters."
         )
@@ -184,10 +180,8 @@ def build_local_code_assistant_prompt(
             "Shell rules:\n"
             "- The `bash` tool is stateless: env vars and shell variables do NOT persist between calls.\n"
             f"- The working directory is already set to {work_dir}. No need to `cd` unless accessing paths outside it.\n"
-            "- There is no file_editor tool. Use shell commands or inline Python for file changes:\n"
-            '  - Create file: `cat > file.py <<\'EOF\'\\ncontents\\nEOF` or `python -c "from pathlib import Path; Path(\'f.py\').write_text(\'content\')"`\n'
-            "  - Targeted edit: `sed -i 's/old/new/g' file.py` or inline Python for portability\n"
-            '  - View with line numbers: `python -c "for i,l in enumerate(open(\'f.py\'),1): print(f\'{i:4d} {l}\', end=\'\')"`\n'
+            "- Use `file_edit` for reading and editing files. Use `bash` for running commands and tests.\n"
+            "- For quick shell edits, `sed -i 's/old/new/g' file.py` also works.\n"
             "- Old tool outputs may be compacted. Re-run a command if exact output matters."
         )
     builder.add_section(
@@ -195,7 +189,8 @@ def build_local_code_assistant_prompt(
         "- `task_board` stores persistent work items in `.tasks/` so plans survive context compression.\n"
         "- Only use task_board when 3+ files must be modified, 3+ concrete edits are required, "
         "or the work has dependency ordering.\n"
-        "- Do not create tasks for simple single-file or single-edit fixes.\n"
+        "- Do NOT create tasks for single-file bugs or simple fixes. Just fix them directly.\n"
+        "- Do NOT create tasks as a first step. Analyze and reproduce first, then decide if tasks are needed.\n"
         "- Mark tasks in progress when you start them and completed when verification is done."
     )
     if sandbox_summary.strip():

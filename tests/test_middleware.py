@@ -178,6 +178,46 @@ def test_reflection_middleware_injects_once(make_model):
     assert any("confidence" in m.get("content", "").lower() for m in user_msgs)
 
 
+def test_bash_boundary_warns_on_escape(tmp_path):
+    """BashSafetyMiddleware prepends warning when command references path outside work_dir."""
+    calls = []
+
+    def executor(name, arguments):
+        calls.append((name, arguments))
+        return "ok"
+
+    guarded = BashSafetyMiddleware(
+        executor,
+        sandbox_info=_sandbox(tmp_path),
+        work_dir=tmp_path,
+    )
+    # Use an absolute path clearly outside work_dir
+    output = guarded("bash", {"command": f"cat /etc/shadow"})
+
+    assert "[WARNING:" in output
+    assert "outside workspace" in output.lower()
+    assert "ok" in output  # command still executed (warning, not block)
+
+
+def test_bash_boundary_allows_safe_commands(tmp_path):
+    """Normal relative-path commands pass without warning."""
+    calls = []
+
+    def executor(name, arguments):
+        calls.append((name, arguments))
+        return "ok"
+
+    guarded = BashSafetyMiddleware(
+        executor,
+        sandbox_info=_sandbox(tmp_path),
+        work_dir=tmp_path,
+    )
+    output = guarded("bash", {"command": "python verify.py"})
+
+    assert output == "ok"
+    assert "[WARNING:" not in output
+
+
 def test_reflection_resets_across_runs(make_model):
     """Bug 6: ReflectionMiddleware counter resets between agent.run() calls."""
     from agent.core import Agent

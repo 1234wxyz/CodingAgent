@@ -159,6 +159,19 @@ class SemanticSearchTool(Tool):
             return self._work_dir / p
         return p
 
+    def _check_boundary(self, resolved: Path) -> str | None:
+        """Return error message if path escapes work_dir, else None."""
+        if self._work_dir is None:
+            return None
+        try:
+            resolved.resolve().relative_to(self._work_dir)
+            return None
+        except ValueError:
+            return (
+                f"Path {resolved} is outside workspace {self._work_dir}. "
+                "Use a relative path within the workspace."
+            )
+
     @property
     def name(self) -> str:
         return "semantic_search"
@@ -243,6 +256,9 @@ class SemanticSearchTool(Tool):
             return ToolObservation(output="", success=False, error="Missing argument 'path'.")
 
         path = self._resolve(path_str)
+        boundary_err = self._check_boundary(path)
+        if boundary_err:
+            return ToolObservation(output="", success=False, error=boundary_err)
         tree, source = _parse_file(path)
         if tree is None:
             # 非 Python 或解析失败 → 返回空，不报错
@@ -273,6 +289,9 @@ class SemanticSearchTool(Tool):
             return ToolObservation(output="", success=False, error="Missing argument 'name'.")
 
         directory = self._resolve(args.get("directory", "."))
+        boundary_err = self._check_boundary(directory)
+        if boundary_err:
+            return ToolObservation(output="", success=False, error=boundary_err)
         if not directory.is_dir():
             return ToolObservation(
                 output="", success=False, error=f"Directory not found: {directory}"
@@ -317,6 +336,9 @@ class SemanticSearchTool(Tool):
             return ToolObservation(output="", success=False, error="Missing argument 'line'.")
 
         path = self._resolve(path_str)
+        boundary_err = self._check_boundary(path)
+        if boundary_err:
+            return ToolObservation(output="", success=False, error=boundary_err)
         tree, source = _parse_file(path)
         if tree is None:
             return ToolObservation(
