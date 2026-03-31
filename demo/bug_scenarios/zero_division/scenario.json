@@ -1,0 +1,7 @@
+{
+  "name": "zero_division",
+  "title": "Empty-list average crashes",
+  "description": "average([]) should return 0.0 instead of raising ZeroDivisionError.",
+  "target_paths": ["calculator.py"],
+  "verify_command": "python verify.py"
+}

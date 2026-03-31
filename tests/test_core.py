@@ -99,16 +99,34 @@ def test_cost_limit_exceeded(make_model, recording_executor):
     assert result["total_steps"] == 1
 
 
-def test_format_error_no_executor(make_model):
-    """tool_executor=None + 有 tool_calls → FormatError。"""
+def test_format_error_no_executor_after_retries(make_model):
+    """tool_executor=None + 3 consecutive tool_calls → FormatError after 2 retries."""
     model = make_model([
-        tool_call_response("bash", {"command": "ls"}),
+        tool_call_response("bash", {"command": "ls"}, call_id="c1"),
+        tool_call_response("bash", {"command": "ls"}, call_id="c2"),
+        tool_call_response("bash", {"command": "ls"}, call_id="c3"),
     ])
     agent = Agent(model, tool_executor=None)
 
     result = agent.run([{"role": "user", "content": "run something"}])
 
     assert result["status"] == "FormatError"
+    # First 2 attempts got corrective feedback, 3rd raised FormatError
+    assert agent.n_steps == 3
+
+
+def test_format_error_retry_then_submit(make_model):
+    """tool_executor=None: model retries once with tool_call, then submits text → Submitted."""
+    model = make_model([
+        tool_call_response("bash", {"command": "ls"}, call_id="c1"),
+        text_response("I'll answer without tools."),
+    ])
+    agent = Agent(model, tool_executor=None)
+
+    result = agent.run([{"role": "user", "content": "run something"}])
+
+    assert result["status"] == "Submitted"
+    assert result["final_content"] == "I'll answer without tools."
 
 
 def test_trajectory_saved_on_success(make_model, recording_executor, tmp_path):
@@ -159,6 +177,33 @@ def test_trajectory_saved_on_failure(make_model, recording_executor, tmp_path):
     exit_entries = [e for e in entries if "exit" in e]
     assert len(exit_entries) == 1
     assert exit_entries[0]["exit"]["status"] == "LimitsExceeded"
+
+
+def test_trajectory_includes_timing_fields(make_model, recording_executor, tmp_path):
+    """Trajectory entries include wall_time_ms and tool_names fields."""
+    traj_path = tmp_path / "traj_timing.jsonl"
+    model = make_model([
+        tool_call_response("bash", {"command": "ls"}, call_id="c1"),
+        text_response("Done."),
+    ])
+    agent = Agent(
+        model,
+        tool_executor=recording_executor,
+        trajectory_path=traj_path,
+    )
+    agent.run([{"role": "user", "content": "go"}])
+
+    entries = _read_jsonl(traj_path)
+    step_entries = [e for e in entries if "step" in e]
+    assert len(step_entries) == 2
+
+    # First step has tool call
+    assert "wall_time_ms" in step_entries[0]
+    assert isinstance(step_entries[0]["wall_time_ms"], (int, float))
+    assert step_entries[0]["tool_names"] == ["bash"]
+
+    # Second step has no tool calls
+    assert step_entries[1]["tool_names"] == []
 
 
 def test_middleware_hooks_order(make_model, recording_executor):

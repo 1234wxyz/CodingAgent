@@ -1,0 +1,7 @@
+{
+  "name": "recursion_depth",
+  "description": "flatten(nested_list) uses recursion and hits RecursionError on deeply nested input. Convert to an iterative approach.",
+  "source": "Common pattern in data transformation libraries",
+  "target_paths": ["flatten.py"],
+  "test_command": "python test_flatten.py"
+}

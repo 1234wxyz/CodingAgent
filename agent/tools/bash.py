@@ -1,12 +1,16 @@
 """
-agent/tools/bash.py — 无状态本地命令执行工具
+agent/tools/bash.py -- stateless local command execution.
 
-每次调用独立，不保留 shell 状态（无 cd / 环境变量持久化）。
+Tool name stays `bash` for compatibility, but execution happens through the
+host shell configured by Python's subprocess layer.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+from pathlib import Path
 from typing import Any
 
 from agent.tools.base import Tool, ToolObservation
@@ -14,8 +18,36 @@ from agent.tools.base import Tool, ToolObservation
 _OUTPUT_MAX = 10_000  # 截断长输出，避免上下文爆炸
 
 
+def _build_clean_env() -> dict[str, str]:
+    """Build a subprocess env that suppresses pagers and progress bars.
+
+    Cross-platform: only sets PAGER/MANPAGER on Unix where ``cat`` exists.
+    """
+    env = dict(os.environ)
+    # Universal overrides (safe on all platforms)
+    env.update({
+        "PIP_PROGRESS_BAR": "off",
+        "TQDM_DISABLE": "1",
+        "NO_COLOR": "1",
+    })
+    if sys.platform == "win32":
+        # git-for-windows respects GIT_PAGER; empty string disables paging.
+        env["GIT_PAGER"] = ""
+    else:
+        env.update({
+            "PAGER": "cat",
+            "GIT_PAGER": "cat",
+            "MANPAGER": "cat",
+            "LESS": "-FRX",
+        })
+    return env
+
+
 class BashTool(Tool):
     """执行 shell 命令并返回 stdout + stderr。"""
+
+    def __init__(self, work_dir: str | Path | None = None) -> None:
+        self._work_dir: str | None = str(Path(work_dir).resolve()) if work_dir else None
 
     @property
     def name(self) -> str:
@@ -24,8 +56,10 @@ class BashTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Execute a shell command. "
-            "Each call is stateless — shell state (cwd, env vars) does NOT persist between calls. "
+            "Execute a host shell command. "
+            "The tool name is `bash` for compatibility, but each call is stateless: "
+            "shell state (cwd, env vars) does NOT persist between calls. "
+            "Use inline Python or shell redirection for file edits when needed. "
             "Output is truncated to 10000 characters."
         )
 
@@ -63,6 +97,8 @@ class BashTool(Tool):
                 capture_output=True,
                 text=True,
                 timeout=60,
+                cwd=self._work_dir,
+                env=_build_clean_env(),
             )
         except subprocess.TimeoutExpired:
             return ToolObservation(
@@ -73,7 +109,17 @@ class BashTool(Tool):
 
         combined = result.stdout + result.stderr
         if len(combined) > _OUTPUT_MAX:
-            combined = combined[:_OUTPUT_MAX] + f"\n[... output truncated at {_OUTPUT_MAX} chars ...]"
+            half = _OUTPUT_MAX // 2
+            omitted = len(combined) - _OUTPUT_MAX
+            combined = (
+                combined[:half]
+                + "\n<warning>\n"
+                f"Output too long ({omitted} characters omitted). "
+                "Try a more selective command: pipe through head/tail, "
+                "redirect to a file and search it, or use grep to filter.\n"
+                "</warning>\n"
+                + combined[-half:]
+            )
 
         return ToolObservation(
             output=combined,

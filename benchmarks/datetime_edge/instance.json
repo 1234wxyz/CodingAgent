@@ -1,0 +1,7 @@
+{
+  "name": "datetime_edge",
+  "description": "next_weekday(date, target_weekday) returns wrong result when date is already that weekday. It should return the NEXT occurrence, not the same day.",
+  "source": "Common pattern in scheduling libraries",
+  "target_paths": ["schedule.py"],
+  "test_command": "python test_schedule.py"
+}

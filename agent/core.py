@@ -14,6 +14,7 @@ agent/core.py — 极薄的 Agent Loop
 
 import json
 import logging
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable
@@ -85,6 +86,7 @@ class Agent:
         self.messages: list[dict[str, Any]] = []
         self.total_cost: float = 0.0
         self.n_steps: int = 0
+        self._no_executor_retries: int = 0
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -103,6 +105,7 @@ class Agent:
         self.messages = list(messages)
         self.total_cost = 0.0
         self.n_steps = 0
+        self._no_executor_retries = 0
 
         exit_status = "unknown"
         exit_exc: Exception | None = None
@@ -152,27 +155,67 @@ class Agent:
         self._check_limits()
         self.n_steps += 1
 
+        t0 = time.perf_counter()
+
         assistant_msg = self.model.query(self.messages)
         cost = assistant_msg.get("cost", 0.0)
         self.total_cost += cost
 
+        # Extract token breakdown before discarding usage
+        token_breakdown = assistant_msg.get("usage") or {}
+
         # 归一化：确保 messages 里存入的 assistant 消息不含 cost/usage 冗余字段
-        # 保留 role / content / tool_calls，供下游消费
-        clean_msg = {
+        # 仅在非空时保留 tool_calls / _normalized_tool_calls，供下游消费
+        clean_msg: dict[str, Any] = {
             "role": assistant_msg["role"],
             "content": assistant_msg.get("content"),
-            "tool_calls": assistant_msg.get("tool_calls", []),
         }
+        tc = assistant_msg.get("tool_calls")
+        if tc:
+            clean_msg["tool_calls"] = tc
+        ntc = assistant_msg.get("_normalized_tool_calls")
+        if ntc:
+            clean_msg["_normalized_tool_calls"] = ntc
         self.messages.append(clean_msg)
 
         step_new_messages = [clean_msg]
+        submitted = False
         try:
             self._dispatch(clean_msg, step_new_messages)
+        except Submitted:
+            submitted = True
         finally:
+            wall_ms = (time.perf_counter() - t0) * 1000
+            # Extract tool names called this step
+            tool_calls = (
+                clean_msg.get("_normalized_tool_calls")
+                or clean_msg.get("tool_calls")
+                or []
+            )
+            tool_names = [
+                tc.get("name") or tc.get("function", {}).get("name", "unknown")
+                for tc in tool_calls if isinstance(tc, dict)
+            ]
             # 无论 _dispatch 是否 raise（含 Submitted / FormatError），step 都落盘
-            self._append_trajectory_step(step_new_messages, cost)
+            self._append_trajectory_step(
+                step_new_messages, cost,
+                wall_time_ms=round(wall_ms, 1),
+                tool_names=tool_names,
+                token_breakdown=token_breakdown,
+            )
+            msg_count_before = len(self.messages)
             for mw in self.middlewares:
                 mw.post_step(self)
+            msg_count_after = len(self.messages)
+
+        # If a middleware injected new messages (e.g. ReflectionMiddleware),
+        # suppress Submitted so the loop continues with the new messages.
+        if submitted:
+            if msg_count_after > msg_count_before:
+                logger.debug("Submitted suppressed: middleware injected %d new message(s).",
+                             msg_count_after - msg_count_before)
+                return  # continue loop
+            raise Submitted("No tool calls — task complete.")
 
     def _check_limits(self) -> None:
         """在 query 前检查 step / cost 限制。超限则 raise LimitsExceeded。"""
@@ -203,10 +246,22 @@ class Agent:
             raise Submitted("No tool calls — task complete.")
 
         if self.tool_executor is None:
-            raise FormatError(
-                f"Model requested tool calls but tool_executor is None. "
-                f"Tools requested: {[tc.get('name') for tc in tool_calls]}"
-            )
+            self._no_executor_retries += 1
+            if self._no_executor_retries > 2:
+                raise FormatError(
+                    f"Model requested tool calls but tool_executor is None "
+                    f"(after {self._no_executor_retries} retries). "
+                    f"Tools requested: {[tc.get('name') for tc in tool_calls]}"
+                )
+            for tc in tool_calls:
+                feedback = {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": "ERROR: No tools are available. Please respond with text only.",
+                }
+                self.messages.append(feedback)
+                step_new_messages.append(feedback)
+            return
 
         for tc in tool_calls:
             tool_name = tc.get("name", "")
@@ -235,16 +290,24 @@ class Agent:
         self,
         new_messages: list[dict[str, Any]],
         step_cost: float,
+        *,
+        wall_time_ms: float = 0.0,
+        tool_names: list[str] | None = None,
+        token_breakdown: dict[str, Any] | None = None,
     ) -> None:
-        """追加本步 trajectory 条目（JSONL）。"""
+        """追加本步 trajectory 条目（JSONL），含可观测性字段。"""
         if not self.config.trajectory_path:
             return
-        entry = {
+        entry: dict[str, Any] = {
             "step": self.n_steps,
             "messages": new_messages,
             "cost": step_cost,
             "total_cost": self.total_cost,
+            "wall_time_ms": wall_time_ms,
+            "tool_names": tool_names or [],
         }
+        if token_breakdown:
+            entry["token_breakdown"] = token_breakdown
         self._write_jsonl_line(entry)
 
     def _append_trajectory_exit(

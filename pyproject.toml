@@ -6,9 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "litellm",
     "pydantic",
+    "tenacity",
     "tree-sitter==0.21.3",
     "tree-sitter-python==0.21.0",
     "python-dotenv",
+    "pyyaml",
 ]
 
 [build-system]

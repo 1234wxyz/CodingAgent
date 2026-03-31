@@ -1,0 +1,7 @@
+{
+  "name": "loyalty_checkout",
+  "title": "Unknown customer tier gets the wrong discount",
+  "description": "Unknown customer tiers should default to no discount, while known tiers should keep their configured discount.",
+  "target_paths": ["pricing.py", "checkout.py"],
+  "verify_command": "python verify.py"
+}
