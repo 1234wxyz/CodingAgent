@@ -6,4 +6,4 @@ DISCOUNT_BY_TIER = {
 
 
 def discount_rate(customer_tier):
-    return DISCOUNT_BY_TIER.get(customer_tier, 0.15)
+    return DISCOUNT_BY_TIER.get(customer_tier, 0.0)
