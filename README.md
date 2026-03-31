@@ -101,41 +101,6 @@ python main.py --task "修复 calculator.py 中的 ZeroDivisionError" --work-dir
 
 <p align="center"><img src="assets/architecture.svg" width="680" alt="Architecture"></p>
 
-### 运行时数据流
-
-```text
-用户请求
-  │
-  ▼
-┌──────────────────────────────────────────────────────────┐
-│  System Prompt 组装 (context.py + prompts/*.yaml)        │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  Agent Loop (core.py, ~340 行)                     │  │
-│  │  run → step → query → dispatch → trajectory        │  │
-│  │       ↑                     │                      │  │
-│  │  Middleware Hooks       Tool Executor               │  │
-│  │  (pre_step / post_step)     │                      │  │
-│  └─────────────────────────────┼──────────────────────┘  │
-│                                ▼                          │
-│  ┌────────┬───────────┬─────────────┬──────────┬──────┐  │
-│  │  bash  │ file_edit │semantic_search│task_board│delegate│
-│  │ (shell)│(确定性编辑)│(tree-sitter) │(.tasks/) │(子Agent)│
-│  └────────┴───────────┴─────────────┴──────────┴──────┘  │
-└──────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌──────────────────────────────────────────────────────────┐
-│  Middleware Chain                                         │
-│  ┌──────────────────┐ ┌───────────────┐ ┌─────────────┐ │
-│  │  BashSafety      │ │SandboxAwareness│ │ContextCompact│ │
-│  │ (12 条风险规则)   │ │(环境探测/注入) │ │(LLM 摘要压缩)│ │
-│  └──────────────────┘ └───────────────┘ └─────────────┘ │
-└──────────────────────────────────────────────────────────┘
-  │
-  ▼
-Trajectory JSONL  →  终端 Dashboard  →  Benchmark 评分卡
-```
 
 ### 核心模块职责
 
@@ -160,15 +125,36 @@ Trajectory JSONL  →  终端 Dashboard  →  Benchmark 评分卡
 ### 目录结构
 
 ```
-agent/                  # 核心 Agent 代码
-├── core.py / context.py / middleware.py / models.py / app.py
-└── tools/              # bash / file_edit / semantic_search / task_board / delegate
+agent/                          # Agent 核心
+├── core.py                     # 执行循环（~340 行）
+├── app.py                      # 应用组装、CLI、UI、Streaming
+├── context.py                  # Prompt 构建、YAML 加载、上下文压缩
+├── middleware.py                # 安全拦截、沙箱感知、上下文管理
+├── models.py                   # LLM 适配器（litellm）、重试、降级
+├── encoding.py                 # Windows UTF-8 编码处理
+└── tools/
+    ├── file_edit.py            # 确定性文件编辑（view/replace/create）
+    ├── bash.py                 # 跨平台 Shell 执行
+    ├── semantic_search.py      # tree-sitter Python 符号搜索
+    ├── task_board.py           # 持久化多步任务追踪
+    ├── delegate.py             # 角色化子 Agent 委派
+    └── registry.py             # 工具注册与 Schema 分发
 
-scripts/                # 评测 / Dashboard / Prompt 对比
-prompts/                # 版本化系统 Prompt（YAML）
-tests/                  # 115 个离线测试
-demo/bug_scenarios/     # 6 个 Bug 场景模板
-benchmarks/             # 5 个自包含基准实例
+scripts/                        # 评测与观测工具
+├── benchmark.py                # Benchmark 评测（pass@1 记分卡）
+├── run_scenarios.py            # Demo 场景自动验证
+├── dashboard.py                # 终端 ASCII Dashboard
+├── analyze.py                  # Trajectory 统计分析
+├── compare_prompts.py          # Prompt 版本 A/B 对比
+└── generate_architecture.py    # 架构图 SVG 生成
+
+prompts/                        # 版本化 System Prompt（YAML）
+├── v1.yaml                     # 标准工作流（5 步 + 可选扩展检查）
+└── v2.yaml                     # 严格精简变体
+
+demo/bug_scenarios/             # 6 个 Bug 修复场景（含 verify.py）
+benchmarks/                     # 5 个 Benchmark 实例（含自动评测）
+tests/                          # 115 个离线测试（无需 API Key）
 ```
 
 ---
