@@ -1,122 +1,132 @@
-# Coding Agent
+<div align="center">
 
-一个从零构建的 Python Coding Agent —— 核心循环仅 ~340 行，通过 middleware 实现安全与上下文管理，通过 tool-calling 扩展能力，具备完整的评测、观测和多 Agent 协作支持。
+<img src="assets/banner.png" width="680" alt="CodingAgent Banner">
 
-<!-- 项目演示 GIF 占位 -->
-<!-- 建议素材：录制一次 loyalty_checkout 场景的完整修复过程（从 python main.py --task ... 到 verify.py 通过），约 30-60 秒，展示 streaming 输出、工具调用、最终总结 -->
+# 🤖 CodingAgent
 
----
+**基于 Harness 思想从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、多 Agent 协作与评测体系。**
 
-## 特性一览
+[![Stars](https://img.shields.io/github/stars/1234wxyz/CodingAgent?style=flat&logo=github&label=Stars)](https://github.com/1234wxyz/CodingAgent/stargazers)
+[![Forks](https://img.shields.io/github/forks/1234wxyz/CodingAgent?style=flat&logo=github&label=Forks)](https://github.com/1234wxyz/CodingAgent/network/members)
+[![Python](https://img.shields.io/badge/Python-≥3.11-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/1234wxyz/CodingAgent?style=flat&label=License)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-115%20offline-brightgreen?style=flat)](tests/)
 
-- **极简内核** — Agent 循环 ~340 行，职责单一：query → dispatch → trajectory
-- **混合编辑** — `file_edit`（确定性文本替换）+ `bash`（Shell 执行），兼顾精确与灵活
-- **Middleware 安全** — 12 条 bash 风险规则、沙箱感知、上下文自动压缩，全部通过 hook 注入，不侵入循环
-- **多 Agent 协作** — `delegate` 工具支持 explorer / reviewer / tester 三种角色的子 Agent
-- **结构化符号搜索** — 基于 tree-sitter 的 Python 符号级搜索，无需启动 LSP
-- **完整评测体系** — 6 个 Demo 场景 + 5 个 Benchmark 实例 + Trajectory Dashboard + Prompt A/B 对比
-- **API 韧性** — 指数退避重试 + 模型降级链 + Streaming 输出
-- **跨平台** — Windows / macOS / Linux，自动处理 UTF-8 编码和平台差异化 Shell 规则
+</div>
 
 ---
 
-## 快速开始
+## 🎯 项目介绍
 
-### 环境配置
+一个从零实现的可评测、可观测的 Python Coding Agent。基于 Harness 思想设计，通过 middleware 实现安全管理与上下文管理，通过 tool-calling 扩展能力，支持角色化多 Agent 协作、持久化任务追踪与 prompt 版本化评测。
+
+---
+
+<table>
+<tr>
+<td align="center" width="33%">
+
+**🛠️ 多工具协同**<br>
+bash + file_edit + 语义检索 三位一体
+
+</td>
+<td align="center" width="33%">
+
+**🛡️ 中间件安全链**<br>
+3 层中间件守护运行安全
+
+</td>
+<td align="center" width="33%">
+
+**📐 工作流纪律**<br>
+分析 → 复现 → 修复 → 验证 → 总结
+
+</td>
+</tr>
+<tr>
+<td align="center">
+
+**🤝 多 Agent 协作**<br>
+explorer / reviewer / tester 角色委派
+
+</td>
+<td align="center">
+
+**📊 结构化可观测**<br>
+Trajectory JSONL + 终端 Dashboard
+
+</td>
+<td align="center">
+
+**🧪 内置评测体系**<br>
+12 个 benchmark + A/B 对比
+
+</td>
+</tr>
+</table>
+
+---
+
+<p align="center">
+  <video src="assets/demo_video.MP4" width="680" controls>
+    浏览器不支持视频标签，请直接查看 <a href="assets/demo_video.MP4">demo_video.MP4</a>
+  </video>
+</p>
+
+---
+
+## 🚀 快速开始
 
 ```bash
-# 创建 conda 环境
-conda create -n coding-agent python=3.11 -y
-conda activate coding-agent
-
-# 安装项目
+# 1. 克隆 & 安装
 git clone https://github.com/1234wxyz/CodingAgent.git
 cd CodingAgent
-pip install -e ".[dev]"
-```
+pip install -e ".[dev]"          # Python >= 3.11
 
-### 配置 API Key
-
-```bash
-# 在项目根目录创建 .env 文件
-# 支持 DeepSeek、Claude 等 litellm 兼容的模型
+# 2. 配置环境变量
 cat > .env <<'EOF'
 MODEL_NAME=deepseek/deepseek-chat
 DEEPSEEK_API_KEY=your_key_here
 EOF
+
+# 3. 启动
+python main.py                   # 交互模式（流式输出）
 ```
 
-### 运行
+单次任务模式：
 
 ```bash
-python main.py                   # 交互模式（streaming 输出）
+python main.py --task "修复 calculator.py 中的 ZeroDivisionError" --work-dir ./benchmarks/zero_division
 ```
 
 ---
 
-## 使用方式
+## 🏗️ 架构总览
 
-### 交互模式
+<p align="center"><img src="assets/architecture.svg" width="680" alt="Architecture"></p>
 
-```bash
-python main.py
-```
 
-输入任务描述，Agent 自动调用工具、编辑代码、运行测试、输出总结。支持 token 级 streaming 实时输出。
+### 核心模块职责
 
-### 单任务模式
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **Agent 主循环** | `core.py` | 极薄循环（~340 行）：run → step → query → dispatch，只管调度，不管安全和 Prompt |
+| **Prompt 引擎** | `context.py` | 系统 Prompt 组装、YAML 加载、输出截断、上下文压缩、历史摘要、Transcript 归档 |
+| **中间件链** | `middleware.py` | BashSafety / SandboxAwareness / ContextCompaction，通过 pre_step/post_step 钩子注入 |
+| **LLM 适配** | `models.py` | litellm 统一适配、流式输出、指数退避重试、模型 Fallback 链 |
+| **应用组装** | `app.py` | 工具注册、中间件编排、CLI 入口、流式 UI |
 
-```bash
-python main.py --task "Fix the ZeroDivisionError in calculator.py" \
-               --work-dir ./demo/bug_scenarios/zero_division
-```
+### 工具矩阵
 
-### Demo 场景验证
+| 工具 | 类型 | 说明 |
+|------|------|------|
+| `bash` | Shell 执行 | 跨平台无状态 Shell，长输出自动截断，环境变量不跨调用持久化 |
+| `file_edit` | 确定性编辑 | view / replace / create 三指令，精确文本匹配替换，路径沙箱保护 |
+| `semantic_search` | 符号检索 | 基于 tree-sitter 的 Python 符号搜索：list_symbols / find_symbol / get_context |
+| `task_board` | 任务持久化 | 多步任务状态持久化到 `.tasks/`，在上下文压缩后仍可恢复进度 |
+| `delegate` | 子 Agent | 角色化委派（explorer / reviewer / tester），隔离上下文独立运行 |
 
-```bash
-python scripts/run_scenarios.py                      # 运行全部 6 个场景
-python scripts/run_scenarios.py zero_division         # 运行单个场景
-python scripts/run_scenarios.py --prompt-version v2   # 指定 prompt 版本
-python scripts/run_scenarios.py --dry-run             # 仅列出可用场景
-```
-
-### Benchmark 评测
-
-```bash
-python scripts/benchmark.py                           # 运行全部 5 个实例
-python scripts/benchmark.py csv_quoting               # 运行单个实例
-python scripts/benchmark.py --dry-run                 # 列出可用实例
-```
-
-<!-- Benchmark 结果截图占位 -->
-<!-- 建议素材：运行 python scripts/benchmark.py 后的终端输出截图，展示 5/5 pass 的表格和耗时 -->
-
-### Trajectory Dashboard
-
-```bash
-python scripts/dashboard.py trajectories/             # 查看最新轨迹
-python scripts/dashboard.py path/to/trajectory.jsonl  # 查看指定轨迹
-```
-
-<!-- Dashboard 截图占位 -->
-<!-- 建议素材：dashboard.py 输出的终端截图，展示 step timeline、tool 频率直方图、cost 曲线 -->
-
-### Prompt A/B 对比
-
-```bash
-python scripts/compare_prompts.py v1 v2               # 对比两个 prompt 版本
-python scripts/compare_prompts.py v1 v2 --dry-run     # 预览对比方案
-```
-
----
-
-## 项目架构
-
-<p align="center">
-  <img src="assets/architecture.svg" alt="项目架构图" width="780">
-</p>
-
-### 文件结构
+### 目录结构
 
 ```
 agent/                          # Agent 核心
@@ -136,7 +146,6 @@ agent/                          # Agent 核心
 
 scripts/                        # 评测与观测工具
 ├── benchmark.py                # Benchmark 评测（pass@1 记分卡）
-├── run_scenarios.py            # Demo 场景自动验证
 ├── dashboard.py                # 终端 ASCII Dashboard
 ├── analyze.py                  # Trajectory 统计分析
 ├── compare_prompts.py          # Prompt 版本 A/B 对比
@@ -146,169 +155,110 @@ prompts/                        # 版本化 System Prompt（YAML）
 ├── v1.yaml                     # 标准工作流（5 步 + 可选扩展检查）
 └── v2.yaml                     # 严格精简变体
 
-demo/bug_scenarios/             # 6 个 Bug 修复场景（含 verify.py）
-benchmarks/                     # 5 个 Benchmark 实例（含自动评测）
+benchmarks/                     # 12 个 Benchmark 实例（含自动评测）
 tests/                          # 115 个离线测试（无需 API Key）
 ```
 
 ---
 
-## 关键设计
+## 🔑 核心设计
 
-### 极简循环 + Middleware 分离
+### 🛠️ 多工具协同：Shell + 确定性编辑 + 语义检索
 
-`core.py` 仅负责 `run → step → query → dispatch → trajectory`，所有安全策略和上下文管理通过 middleware 的 `pre_step` / `post_step` hook 注入：
+Agent 拥有三类互补的代码操作工具：`bash` 执行任意 Shell 命令（适合探索、运行测试、复杂脚本），`file_edit` 提供精确的文本匹配替换（避免 sed 正则出错），`semantic_search` 基于 tree-sitter 做 Python 符号级检索（比 grep 更理解代码结构）。三者各司其职，由 Agent 根据场景自主选择。
 
-| Middleware | 职责 |
-|-----------|------|
-| **BashSafety** | 拦截 `rm -rf /`、`sudo`、`git reset --hard` 等 12 类危险命令 |
-| **SandboxAwareness** | 探测运行环境，将约束信息注入 system prompt |
-| **ContextCompaction** | token 超限时自动压缩历史（LLM 摘要 + 旧输出截断 + 存档） |
-| **Reflection** | 完成前自我审查（默认关闭，`AGENT_REFLECTION=1` 启用） |
+### 🛡️ Middleware 安全链：安全逻辑不侵入主循环
 
-### 混合编辑策略
+所有安全与上下文管理通过 `middleware.py` 的 `pre_step`/`post_step` 钩子实现，`core.py` 完全无感知。
 
-结合两种编辑路径，取长补短：
+| 中间件 | 职责 |
+|--------|------|
+| **BashSafety** | 拦截 `rm -rf /`、`sudo` 等 12 类危险命令，包裹 tool executor |
+| **SandboxAwareness** | 首次运行时探测环境（Docker / CI / 本地），注入约束到系统 Prompt |
+| **ContextCompaction** | 压缩旧工具输出、LLM 摘要历史、归档完整 Transcript |
 
-- **`file_edit`** — 确定性文本查找替换，处理多行编辑不会出现 Shell 转义问题
-- **`bash`** — 运行测试、执行命令、处理复杂文件操作
+### 📐 5 步工作流纪律
 
-prompt 引导 Agent 优先使用 `file_edit replace` 进行代码修改，用 `bash` 运行验证命令。
-
-### 工作流纪律
-
-System prompt 强制执行严格的操作顺序，每步只做一件事：
-
-```
-1. ANALYZE  → 阅读代码，定位问题
-2. REPRODUCE → 运行失败的验证命令
-3. FIX      → 最小化修改
-4. VERIFY   → 重新运行验证命令
-5. FINISH   → 验证通过即结束，总结修复内容
-```
-
-**可选**：仅在原始验证遗留具体风险时才运行额外检查。
-
-### 多 Agent 协作
-
-`delegate` 工具支持将子问题委派给隔离上下文的子 Agent：
-
-| 角色 | 职责 |
-|------|------|
-| `explorer` | 代码调查：查找文件、梳理调用链 |
-| `reviewer` | 质量审查：正确性、边界情况、副作用 |
-| `tester` | 测试执行：运行测试、验证覆盖率 |
-
-### 工作区边界保护
-
-所有工具（`file_edit`、`semantic_search`、`bash`）的路径操作都受 `work_dir` 约束。相对路径基于工作目录解析，访问外部路径会收到警告或拒绝，防止 Agent 在临时工作区运行时发生路径漂移。
-
-### Prompt 版本化
-
-System prompt 以 YAML 文件存储在 `prompts/` 目录，运行时通过 `AGENT_PROMPT_VERSION=v2` 或 `--prompt-version v2` 切换。`compare_prompts.py` 支持两个版本在同一场景集上的 A/B 对比。
+系统 Prompt 强制执行严格动作序列：**分析 → 复现 → 修复 → 验证 → 总结**。每一步只做一件事 —— 调用工具或返回最终答案，不混杂叙述与操作。验证通过后可选执行额外检查（仅在有具体回归风险时触发），否则立即结束。
 
 ---
 
-## 评测能力
+## 🧪 评测能力
 
-### Demo 场景
+| 类型 | 名称 | 描述 |
+|------|------|------|
+| 基准 | `zero_division` | `average([])` 应返回 0.0 而非抛异常 |
+| 基准 | `trailing_window` | 滑动窗口 off-by-one |
+| 基准 | `type_error` | `int + str` 类型拼接错误 |
+| 基准 | `import_cycle` | 多文件循环导入 |
+| 基准 | `missing_return` | 函数缺少 return |
+| 基准 | `dict_merge_overwrite` | 浅拷贝导致配置覆盖 |
+| 基准 | `csv_quoting` | 字段引号缺失 |
+| 基准 | `datetime_edge` | 日期计算 off-by-one |
+| 基准 | `regex_escape` | 正则特殊字符未转义 |
+| 基准 | `recursion_depth` | 深层输入触发 RecursionError |
+| 基准 | `free_shipping_threshold` | 免邮阈值边界判断错误 |
+| 基准 | `path_normalization` | 路径拼接重复斜杠 |
 
-6 个精心设计的 bug 修复场景，覆盖常见 Python 错误类型：
-
-| 场景 | 错误类型 | 描述 |
-|------|---------|------|
-| `zero_division` | 运行时异常 | `average([])` 应返回 `0.0`，而非抛出 ZeroDivisionError |
-| `trailing_window` | Off-by-one | `trailing_window(items, 3)` 应返回 3 个元素 |
-| `loyalty_checkout` | 多文件逻辑 | 未知客户等级不应获得折扣 |
-| `type_error` | 类型错误 | `int + str` 拼接失败 |
-| `import_cycle` | 循环导入 | 多文件循环依赖 |
-| `missing_return` | 控制流 | 函数缺少 return 语句 |
-
-### Benchmark 实例
-
-5 个源自真实开源模式的 benchmark 实例：
-
-| 实例 | Bug 类型 | 来源模式 |
-|------|---------|---------|
-| `dict_merge_overwrite` | 浅拷贝变异 | Django settings 合并 |
-| `csv_quoting` | 缺少字段引号 | 数据处理库 |
-| `datetime_edge` | 日期边界 | 调度库 |
-| `regex_escape` | 正则特殊字符 | 搜索工具 |
-| `recursion_depth` | 递归深度限制 | 数据转换 |
-
-### 测试
+<p align="center"><img src="assets/dashboard.png" width="680" alt="Trajectory Dashboard"></p>
 
 ```bash
-pytest tests/ -v                  # 115 个离线测试（无需 API Key）
-python scripts/run_scenarios.py   # 6 个 Demo 场景（需 API Key）
-python scripts/benchmark.py       # 5 个 Benchmark 实例（需 API Key）
+pytest tests/ -v                       # 115 个离线测试
+python scripts/benchmark.py            # 12 实例基准评分卡
+python scripts/compare_prompts.py v1 v2 --dry-run  # Benchmark A/B 预览
+python scripts/dashboard.py trajectories/  # 终端 Dashboard
 ```
 
 ---
 
-## 项目数据
+## 📊 项目数据
 
 | 指标 | 数值 |
 |------|------|
-| 核心循环 (core.py) | ~340 行 |
-| Agent 总代码量 | ~1,950 行 |
-| 工具数 | 6（file_edit, bash, semantic_search, task_board, delegate, registry） |
-| Middleware 数 | 4（BashSafety, SandboxAwareness, ContextCompaction, Reflection） |
+| 核心循环 | ~340 行 |
+| Agent 总代码 | ~3300 行 |
 | 离线测试 | 115 |
-| Demo 场景 | 6 |
-| Benchmark 实例 | 5 |
-| Prompt 版本 | 2（YAML 格式，支持 A/B 对比） |
+| 工具 | 5（bash / semantic_search / task_board / delegate / file_edit） |
+| 中间件 | 3（safety / sandbox / compaction） |
+| 评测实例 | 12 个 benchmark |
+| Prompt 版本 | 2（YAML，支持 A/B 对比） |
 
 ---
 
-## 当前局限
+## 🗺️ 后续规划
 
-- **仅支持 Python 符号搜索** — `semantic_search` 基于 tree-sitter-python，不支持其他语言
-- **LLM 依赖** — 上下文压缩和历史摘要需要 LLM 调用，离线场景不可用
-- **单文件编辑粒度** — `file_edit replace` 要求精确匹配，对大范围重构支持有限
-- **无持久化会话** — 交互模式下退出后历史不保留（但 trajectory 和 task 已持久化）
-- **Benchmark 规模有限** — 当前仅 5 个实例，不构成统计显著的评测集
-
----
-
-## 后续规划
-
-- [ ] 支持更多语言的符号搜索（TypeScript、Go、Rust）
-- [ ] 接入 SWE-bench Lite 作为外部 benchmark
-- [ ] 支持 MCP (Model Context Protocol) 工具扩展
-- [ ] 添加会话持久化与恢复
-- [ ] Web UI / VS Code 插件
-- [ ] 更细粒度的 cost 控制与 budget 预警
+- [ ] 支持更多 LLM 后端（OpenAI / Claude / 本地模型）
+- [ ] Web UI 交互界面
+- [ ] SWE-bench Lite 评测集成
+- [ ] 工具调用并行化
 
 ---
 
-## 运行时产物
+## 📚 参考项目
 
-| 路径 | 内容 |
-|------|------|
-| `trajectories/*.jsonl` | 每步轨迹（耗时、工具、cost、token） |
-| `.tasks/*.json` | 多步任务状态（跨上下文压缩保留） |
-| `.transcripts/*.jsonl` | 完整历史存档（LLM 摘要前备份） |
-| `benchmarks/results/*.json` | Benchmark 评测记分卡 |
-
----
-
-## 参考项目
-
-| 项目 | 借鉴方面 |
-|------|---------|
-| [SWE-agent / mini-swe-agent](https://github.com/SWE-agent/SWE-agent) | 工作流优先的 prompt 设计思路、README 的工程项目呈现风格 |
-| [Aider](https://github.com/Aider-AI/aider) | README 信息层级、特性一览的展示方式、快速开始的组织结构 |
-| [Reflexion](https://github.com/noahshinn/reflexion) | 自我反思循环的设计模式 |
-| [CrewAI](https://github.com/crewAIInc/crewAI) | 角色化多 Agent 协作模式 |
-| [promptfoo](https://github.com/promptfoo/promptfoo) | Prompt 版本管理与 A/B 测试方法论 |
-| [SWE-bench](https://github.com/princeton-nlp/SWE-bench) | Benchmark 评测方法论 |
-| [litellm](https://github.com/BerriAI/litellm) | 统一 LLM 适配器、路由与降级 |
-| [phoenix (Arize)](https://github.com/Arize-ai/phoenix) | LLM trace 可观测性思路 |
-| [serena](https://github.com/oraios/serena) | 符号优先的代码搜索策略 |
+- [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) — Workflow-first prompt 设计
+- [Reflexion](https://github.com/noahshinn/reflexion) — 自省循环
+- [CrewAI](https://github.com/crewAIInc/crewAI) — 角色化多 Agent 模式
+- [promptfoo](https://github.com/promptfoo/promptfoo) — Prompt 版本化与 A/B 测试
+- [SWE-bench](https://github.com/princeton-nlp/SWE-bench) — 评测方法论
+- [litellm](https://github.com/BerriAI/litellm) — 统一 LLM 适配层
+- [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk) — Tool schema 参考
+- [serena](https://github.com/oraios/serena) — 符号级代码搜索
 
 ---
 
-## License
+## 📄 License
 
-MIT
+本项目基于 [MIT License](LICENSE) 开源。
+
+---
+
+<div align="center">
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=1234wxyz/CodingAgent&type=Date)](https://star-history.com/#1234wxyz/CodingAgent&Date)
+
+**如果这个项目对你有帮助，请给一个 ⭐ Star 支持！**
+
+</div>

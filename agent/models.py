@@ -31,7 +31,7 @@ import json
 import logging
 from typing import Any, Iterator, Literal
 
-import litellm
+import litellm # litellm 把所有模型的响应翻译成 OpenAI 格式（它需要参数为字符串）
 from pydantic import BaseModel
 from tenacity import (
     retry,
@@ -52,7 +52,6 @@ class ModelConfig(BaseModel):
     model_name: str
     model_kwargs: dict[str, Any] = {}
     cost_tracking: Literal["default", "ignore_errors"] = "default"
-
 
 class LLMModel:
     """轻量 LLM 适配器，封装 litellm，对外暴露 query(messages)。"""
@@ -76,7 +75,7 @@ class LLMModel:
 
     @staticmethod
     def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Strip internal fields and empty tool_calls before sending to provider."""
+        """过滤掉 API 不认识的字段，并删除空 tool_calls: []"""
         cleaned = []
         for msg in messages:
             out = {k: v for k, v in msg.items() if k in _PROVIDER_KEYS}
@@ -94,7 +93,7 @@ class LLMModel:
         wait=wait_exponential(min=1, max=30),
         stop=stop_after_attempt(3),
         reraise=True,
-    )
+    )  # 装饰器注入
     def query(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """调用 LLM，返回归一化的 assistant message。
 
@@ -145,11 +144,11 @@ class LLMModel:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             "cost": 0.0,
         }
-
+        # 遍历模型流式响应，遇到文字就往外 yield，遇到 tool_call 就累积起来，最后把完整结果写入 final_msg
         def _iter_chunks() -> Iterator[str]:
-            content_parts: list[str] = []
-            raw_tool_calls_map: dict[int, dict[str, Any]] = {}
-            last_chunk = None
+            content_parts: list[str] = [] # 收集文本片段，最后 join 填入 final_msg["content"]
+            raw_tool_calls_map: dict[int, dict[str, Any]] = {} # 索引到 tool_call 的临时映射，最后转换成列表填入 final_msg["tool_calls"]
+            last_chunk = None # 记录最后一个 chunk，以便迭代结束后提取 usage
 
             for chunk in response:
                 last_chunk = chunk
@@ -160,13 +159,13 @@ class LLMModel:
                 # Text content
                 if delta.content:
                     content_parts.append(delta.content)
-                    yield delta.content
+                    yield delta.content # 发放文本片段,用于流式显示！
 
                 # Streaming tool calls (accumulated by index)
                 if getattr(delta, "tool_calls", None):
                     for tc_delta in delta.tool_calls:
                         idx = tc_delta.index
-                        if idx not in raw_tool_calls_map:
+                        if idx not in raw_tool_calls_map:  # 新的 tool call，初始化占位
                             raw_tool_calls_map[idx] = {
                                 "id": "",
                                 "type": "function",
@@ -181,7 +180,7 @@ class LLMModel:
                             if tc_delta.function.arguments:
                                 entry["function"]["arguments"] += tc_delta.function.arguments
 
-            # Fill final message
+            # Fill final message，需要耗尽迭代器才能得到完整的 tool_calls 和 usage
             final_msg["content"] = "".join(content_parts) if content_parts else None
             raw_tcs = [raw_tool_calls_map[k] for k in sorted(raw_tool_calls_map)]
             final_msg["tool_calls"] = raw_tcs
@@ -201,17 +200,13 @@ class LLMModel:
             final_msg["_normalized_tool_calls"] = normalized
 
             # Extract usage from the final streaming chunk
-            if last_chunk and hasattr(last_chunk, "usage") and last_chunk.usage:
-                usage = last_chunk.usage
-                final_msg["usage"] = {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-                    "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
-                    "total_tokens": getattr(usage, "total_tokens", 0) or 0,
-                }
+            if last_chunk:
+                final_msg["usage"] = self._extract_usage(last_chunk)
 
             # Build synthetic ModelResponse for completion_cost
             try:
                 if final_msg["usage"]["total_tokens"] > 0:
+                    # 生成一个 synthetic ModelResponse 对象，填充 usage 字段，供 completion_cost 计算使用
                     synthetic = litellm.ModelResponse()
                     synthetic.usage = litellm.Usage(
                         prompt_tokens=final_msg["usage"]["prompt_tokens"],
@@ -235,12 +230,12 @@ class LLMModel:
           - tool_calls: OpenAI 原始格式，用于存入消息历史（litellm round-trip）
           - _normalized_tool_calls: [{id, name, arguments}]，用于 core.py dispatch
         """
-        choice = response.choices[0]
-        message = choice.message
+
+        message = response.choices[0].message if response.choices else None
 
         content = message.content
         raw_tool_calls = self._extract_raw_tool_calls(message)
-        normalized_tool_calls = self._extract_tool_calls(message)
+        normalized_tool_calls = self._extract_tool_calls(message) # 生命周期只有一轮，用完即丢，不存历史
         usage = self._extract_usage(response)
         cost = self._calculate_cost(response)
 
@@ -254,7 +249,7 @@ class LLMModel:
         }
 
     def _extract_raw_tool_calls(self, message: Any) -> list[dict[str, Any]]:
-        """提取 litellm/OpenAI 原始格式的 tool calls（arguments 保持 JSON 字符串）。"""
+        """提取 litellm/OpenAI 原始格式的 tool calls（arguments 保持 JSON 字符串）。对象 → dict"""
         raw = getattr(message, "tool_calls", None) or []
         result = []
         for tc in raw:
@@ -277,7 +272,7 @@ class LLMModel:
             try:
                 arguments = tc.function.arguments
                 if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
+                    arguments = json.loads(arguments) # 解析成 dict
             except (json.JSONDecodeError, AttributeError) as e:
                 logger.warning("Failed to parse tool call arguments: %s", e)
                 arguments = {}

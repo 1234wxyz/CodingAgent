@@ -168,7 +168,8 @@ class DelegateTool(Tool):
             "DelegateTool: starting sub-agent (role=%s) for task: %.100s",
             role, task,
         )
-
+        # Create a new Agent instance for the sub-agent, with isolated message history and its own tool executor
+        # new 一个 Agent，它的消息历史、步数、成本都是独立的
         sub_agent = Agent(
             model=self._model,
             tool_executor=self._sub_tool_executor,
@@ -201,7 +202,7 @@ class DelegateTool(Tool):
             if final_content:
                 lines.append(final_content)
             output = "\n".join(lines)
-            success = status == "Submitted"
+            success = status == "Submitted" # 无论如何都把 sub-agent 的输出当作成功的结果返回，除非它完全没有输出或者抛出了异常
 
         logger.debug(
             "DelegateTool: sub-agent done. role=%s status=%s steps=%d cost=%.4f",

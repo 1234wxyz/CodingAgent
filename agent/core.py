@@ -1,5 +1,5 @@
 """
-agent/core.py — 极薄的 Agent Loop
+agent/core.py — 极薄的 Agent Loop ， 只依赖两个外部接口：LLMModel.query 和 tool_executor。
 
 核心链路：run → step → query → dispatch tool calls → append history → save trajectory
 
@@ -7,9 +7,9 @@ agent/core.py — 极薄的 Agent Loop
   - 只负责主循环、历史管理、工具分发调用、trajectory 落盘
   - 不负责 prompt 资产管理、模型厂商适配、工具实现、registry 逻辑本身
 
-工具执行接线点（Day 2 兼容）：
+工具执行接线点：
   tool_executor: Callable[[str, dict], str] | None
-  Day 2 注入时传入：lambda name, args: registry.get(name).execute(args)
+  注入时传入：lambda name, args: registry.get(name).execute(args)
 """
 
 import json
@@ -86,7 +86,6 @@ class Agent:
         self.messages: list[dict[str, Any]] = []
         self.total_cost: float = 0.0
         self.n_steps: int = 0
-        self._no_executor_retries: int = 0
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -164,57 +163,27 @@ class Agent:
         # Extract token breakdown before discarding usage
         token_breakdown = assistant_msg.get("usage") or {}
 
-        # 归一化：确保 messages 里存入的 assistant 消息不含 cost/usage 冗余字段
-        # 仅在非空时保留 tool_calls / _normalized_tool_calls，供下游消费
-        clean_msg: dict[str, Any] = {
-            "role": assistant_msg["role"],
-            "content": assistant_msg.get("content"),
-        }
-        tc = assistant_msg.get("tool_calls")
-        if tc:
-            clean_msg["tool_calls"] = tc
-        ntc = assistant_msg.get("_normalized_tool_calls")
-        if ntc:
-            clean_msg["_normalized_tool_calls"] = ntc
-        self.messages.append(clean_msg)
+        idx_before_dispatch = len(self.messages)
+        self.messages.append(assistant_msg)
 
-        step_new_messages = [clean_msg]
         submitted = False
         try:
-            self._dispatch(clean_msg, step_new_messages)
+            self._dispatch(assistant_msg)
         except Submitted:
             submitted = True
         finally:
             wall_ms = (time.perf_counter() - t0) * 1000
             # Extract tool names called this step
-            tool_calls = (
-                clean_msg.get("_normalized_tool_calls")
-                or clean_msg.get("tool_calls")
-                or []
-            )
-            tool_names = [
-                tc.get("name") or tc.get("function", {}).get("name", "unknown")
-                for tc in tool_calls if isinstance(tc, dict)
-            ]
+            tool_calls = assistant_msg.get("_normalized_tool_calls") or []
+            tool_names = [tc.get("name", "unknown") for tc in tool_calls]
             # 无论 _dispatch 是否 raise（含 Submitted / FormatError），step 都落盘
             self._append_trajectory_step(
-                step_new_messages, cost,
+                self.messages[idx_before_dispatch:], cost,
                 wall_time_ms=round(wall_ms, 1),
                 tool_names=tool_names,
                 token_breakdown=token_breakdown,
             )
-            msg_count_before = len(self.messages)
-            for mw in self.middlewares:
-                mw.post_step(self)
-            msg_count_after = len(self.messages)
-
-        # If a middleware injected new messages (e.g. ReflectionMiddleware),
-        # suppress Submitted so the loop continues with the new messages.
         if submitted:
-            if msg_count_after > msg_count_before:
-                logger.debug("Submitted suppressed: middleware injected %d new message(s).",
-                             msg_count_after - msg_count_before)
-                return  # continue loop
             raise Submitted("No tool calls — task complete.")
 
     def _check_limits(self) -> None:
@@ -231,7 +200,6 @@ class Agent:
     def _dispatch(
         self,
         assistant_msg: dict[str, Any],
-        step_new_messages: list[dict[str, Any]],
     ) -> None:
         """从 assistant_message 提取 tool_calls，执行并 append observations。
 
@@ -240,28 +208,16 @@ class Agent:
         """
         # 优先用 _normalized_tool_calls（真实 litellm 响应，来自 models.py）
         # fallback 到 tool_calls（兼容 Day 1 mock 模型，直接返回归一化格式）
-        tool_calls = assistant_msg.get("_normalized_tool_calls") or assistant_msg.get("tool_calls") or []
+        tool_calls = assistant_msg.get("_normalized_tool_calls") or []
 
         if not tool_calls:
             raise Submitted("No tool calls — task complete.")
 
         if self.tool_executor is None:
-            self._no_executor_retries += 1
-            if self._no_executor_retries > 2:
-                raise FormatError(
-                    f"Model requested tool calls but tool_executor is None "
-                    f"(after {self._no_executor_retries} retries). "
-                    f"Tools requested: {[tc.get('name') for tc in tool_calls]}"
-                )
-            for tc in tool_calls:
-                feedback = {
-                    "role": "tool",
-                    "tool_call_id": tc.get("id", ""),
-                    "content": "ERROR: No tools are available. Please respond with text only.",
-                }
-                self.messages.append(feedback)
-                step_new_messages.append(feedback)
-            return
+            raise FormatError(
+                f"Model requested tool calls but tool_executor is None. "
+                f"Tools requested: {[tc.get('name') for tc in tool_calls]}"
+            )
 
         for tc in tool_calls:
             tool_name = tc.get("name", "")
@@ -271,16 +227,15 @@ class Agent:
             try:
                 observation = self.tool_executor(tool_name, arguments)
             except Exception as e:
-                observation = f"ERROR: {e}"
+                observation = str(e)
                 logger.warning("Tool %r failed: %s", tool_name, e)
 
             tool_result = {
                 "role": "tool",
                 "tool_call_id": tool_call_id,
-                "content": str(observation),
+                "content": observation,
             }
             self.messages.append(tool_result)
-            step_new_messages.append(tool_result)
 
     # ------------------------------------------------------------------
     # Trajectory

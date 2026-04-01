@@ -37,11 +37,11 @@ def tool_call_response(
     call_id: str = "tc_001",
     cost: float = 0.001,
 ) -> dict[str, Any]:
-    """构建包含单个工具调用的 assistant_message（归一化格式，兼容 core.py fallback）。"""
+    """构建包含单个工具调用的 assistant_message（与 models.py 返回格式一致）。"""
     return {
         "role": "assistant",
         "content": None,
-        "tool_calls": [{"id": call_id, "name": tool_name, "arguments": arguments}],
+        "_normalized_tool_calls": [{"id": call_id, "name": tool_name, "arguments": arguments}],
         "usage": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30},
         "cost": cost,
     }

@@ -1,0 +1,7 @@
+{
+  "name": "zero_division",
+  "description": "average([]) should return 0.0 instead of raising ZeroDivisionError.",
+  "source": "Migrated from an earlier runtime-error demo scenario",
+  "target_paths": ["calculator.py"],
+  "test_command": "python test_zero_division.py"
+}

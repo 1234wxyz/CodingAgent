@@ -14,7 +14,7 @@ from agent.tools.base import Tool, ToolObservation
 
 
 class TaskStore:
-    """File-backed task store with a lightweight dependency graph."""
+    """File-backed task store with blocked_by dependency tracking."""
 
     def __init__(self, tasks_dir: str | Path = ".tasks") -> None:
         self.dir = Path(tasks_dir)
@@ -27,7 +27,6 @@ class TaskStore:
             "description": description,
             "status": "pending",
             "blocked_by": [],
-            "blocks": [],
         }
         self._save(task)
         return task
@@ -56,8 +55,8 @@ class TaskStore:
         task_id: int,
         status: str | None = None,
         add_blocked_by: list[int] | None = None,
-        add_blocks: list[int] | None = None,
     ) -> dict[str, Any]:
+        '''Update task status and dependencies. Automatically clears dependencies when marking completed.'''
         task = self.get(task_id)
 
         if status is not None:
@@ -67,15 +66,6 @@ class TaskStore:
 
         if add_blocked_by:
             task["blocked_by"] = sorted(set(task["blocked_by"] + list(add_blocked_by)))
-
-        if add_blocks:
-            task["blocks"] = sorted(set(task["blocks"] + list(add_blocks)))
-            for blocked_id in add_blocks:
-                blocked = self.get(blocked_id)
-                if task_id not in blocked["blocked_by"]:
-                    blocked["blocked_by"].append(task_id)
-                    blocked["blocked_by"] = sorted(set(blocked["blocked_by"]))
-                    self._save(blocked)
 
         self._save(task)
 
@@ -165,11 +155,6 @@ class TaskBoardTool(Tool):
                             "items": {"type": "integer"},
                             "description": "[update] Task ids that block this task.",
                         },
-                        "add_blocks": {
-                            "type": "array",
-                            "items": {"type": "integer"},
-                            "description": "[update] Task ids blocked by this task.",
-                        },
                     },
                     "required": ["command"],
                 },
@@ -213,7 +198,6 @@ class TaskBoardTool(Tool):
                     task_id=int(task_id),
                     status=arguments.get("status"),
                     add_blocked_by=[int(v) for v in arguments.get("add_blocked_by") or []],
-                    add_blocks=[int(v) for v in arguments.get("add_blocks") or []],
                 )
                 return ToolObservation(output=_format_task_json(task), success=True)
 
@@ -231,6 +215,7 @@ def _format_task_json(task: dict[str, Any]) -> str:
 
 
 def _format_task_list(tasks: list[dict[str, Any]]) -> str:
+    '''Format a list of tasks in a human-readable way, showing status and dependencies.'''
     if not tasks:
         return "No tasks."
 

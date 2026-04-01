@@ -78,7 +78,7 @@ def run_instance(
     config.step_limit = step_limit
     config.cost_limit = cost_limit
     config.streaming = False
-    config.enable_reflection = True
+    config.enable_reflection = False
     if prompt_version:
         config.prompt_version = prompt_version
 

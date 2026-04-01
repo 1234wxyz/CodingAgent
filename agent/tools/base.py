@@ -8,7 +8,7 @@ agent/tools/base.py — 统一工具协议
 工具协议要求：
   - name: str          供 registry 索引
   - description: str   供文档/日志
-  - schema: dict       litellm/OpenAI function schema，供模型层消费
+  - schema: dict       litellm/OpenAI function schema，用于向模型层注册工具
   - execute(arguments) -> ToolObservation
 
 不包含具体工具逻辑，也不包含 registry 逻辑。
@@ -34,7 +34,6 @@ class ToolObservation:
     output: str
     success: bool = True
     error: str | None = None
-
     def __str__(self) -> str:
         """返回适合写入消息历史的字符串表示。"""
         if not self.success:
@@ -79,7 +78,7 @@ class Tool(ABC):
     @property
     @abstractmethod
     def schema(self) -> dict[str, Any]:
-        """litellm/OpenAI function schema，供 model_kwargs["tools"] 使用。"""
+        """litellm/OpenAI function schema，供 model_kwargs["tools"] 发现使用。"""
         ...
 
     @abstractmethod

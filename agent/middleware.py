@@ -46,13 +46,13 @@ class Middleware(ABC):
 class SandboxInfo:
     """Best-effort view of the current runtime constraints."""
 
-    mode: str
-    source: str
-    shell: str
-    workspace_root: Path
-    workspace_writable: bool
-    temp_writable: bool
-    notes: list[str] = field(default_factory=list)
+    mode: str # e.g. "read-only", "workspace-write", "workspace-write-or-better", "unknown"
+    source: str # e.g. "env:CODEX_SANDBOX_MODE" or "heuristic"
+    shell: str # e.g. "/bin/bash" or "powershell" or "unknown"
+    workspace_root: Path # absolute path of the workspace root 
+    workspace_writable: bool # whether the workspace directory appears writable
+    temp_writable: bool # whether the system temp directory appears writable
+    notes: list[str] = field(default_factory=list) # any additional contextual notes (e.g. "ci=true", "detected read-only filesystem")
 
     def render(self) -> str:
         lines = [
@@ -70,6 +70,7 @@ class SandboxInfo:
 
 @dataclass(slots=True)
 class CommandVerdict:
+    """Result of assessing a shell command for safety."""
     allowed: bool
     reason: str = ""
 
@@ -101,7 +102,7 @@ def detect_sandbox(
     work_dir: str | Path | None = None,
     env: dict[str, str] | None = None,
 ) -> SandboxInfo:
-    """Best-effort sandbox detection from env vars plus write probes."""
+    """ sandbox detection from env vars plus write probes."""
     env = dict(env or os.environ)
     workspace_root = Path(work_dir or ".").resolve()
 
@@ -114,6 +115,7 @@ def detect_sandbox(
     mode = "unknown"
     source = "heuristic"
     for key in explicit_keys:
+        # Check for explicit sandbox mode indicators in the environment
         value = env.get(key)
         if value:
             mode = value
@@ -156,11 +158,11 @@ def assess_bash_command(command: str, sandbox: SandboxInfo | None = None) -> Com
     raw = command.strip()
     if not raw:
         return CommandVerdict(True)
-
+    # Check high-risk patterns first (block if matched)
     for pattern, reason in _HIGH_RISK_PATTERNS:
         if pattern.search(raw):
             return CommandVerdict(False, reason)
-
+    # If in a read-only sandbox, block any write-like commands (even if not high-risk)
     if sandbox and sandbox.mode == "read-only":
         for pattern in _WRITE_LIKE_PATTERNS:
             if pattern.search(raw):
@@ -285,7 +287,7 @@ class SandboxAwarenessMiddleware(Middleware):
         else:
             agent.messages.insert(0, {"role": "system", "content": notice})
 
-        agent._sandbox_notice_injected = True
+        agent._sandbox_notice_injected = True # flag to avoid reinjecting on subsequent steps
 
 
 class ContextCompactionMiddleware(Middleware):
@@ -317,7 +319,7 @@ class ContextCompactionMiddleware(Middleware):
 
         if estimate_tokens(agent.messages) < self.condense_threshold_tokens:
             return
-
+        # 二级压缩
         archive_path = archive_messages(agent.messages, self.transcript_dir)
         condensed = condense_history(
             agent.messages,

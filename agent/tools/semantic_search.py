@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 # tree-sitter 懒加载（避免 import 时报错影响整包加载）
 # ---------------------------------------------------------------------------
 
-_parser = None
-_language = None
+_parser = None  # tree-sitter parser 模块级实例 
+_language = None # Python语法对象
 
 
 def _get_parser():
@@ -60,8 +60,8 @@ def _parse_file(path: Path):
         return None, None
     try:
         parser, _ = _get_parser()
-        source = path.read_bytes()
-        tree = parser.parse(source)
+        source = path.read_bytes() # 以 bytes 形式读取源码（tree-sitter 需要 bytes 输入）
+        tree = parser.parse(source) # 解析源码，返回 AST 树
         return tree, source
     except Exception as e:
         logger.debug("Failed to parse %s: %s", path, e)
@@ -69,6 +69,7 @@ def _parse_file(path: Path):
 
 
 def _node_name(node) -> str:
+    '''提取节点的名称（函数/类名)'''
     name_node = node.child_by_field_name("name")
     return name_node.text.decode("utf-8") if name_node else "?"
 
@@ -90,6 +91,7 @@ def _node_signature(node, source: bytes) -> str:
 
 
 def _kind_label(node_type: str, is_method: bool) -> str:
+    '''把 AST 节点类型转换成人类可读标签：class / function / method。'''
     if node_type == "class_definition":
         return "class"
     return "method" if is_method else "function"
@@ -139,7 +141,7 @@ def _find_enclosing_node(root_node, target_line_0based: int):
             walk(child)
 
     walk(root_node)
-    return best
+    return best  #  节点覆盖了目标行
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +280,13 @@ class SemanticSearchTool(Tool):
             lines.append(f"{indent}{s['kind']} {s['name']}{sig}  (line {s['line']})")
 
         return ToolObservation(output="\n".join(lines), success=True)
+    '''
+Symbols in sample.py:
+class Foo(Base)  (line 1)
+  method a(self, x)  (line 2)
+  method b(self)  (line 5)
+function top(y)  (line 8)
+    '''
 
     # ------------------------------------------------------------------
     # find_symbol
@@ -302,7 +311,7 @@ class SemanticSearchTool(Tool):
             p for p in directory.rglob("*.py")
             if "__pycache__" not in p.parts and ".git" not in p.parts
         ]
-
+        #逐个文件解析 AST，提取符号， 按名字匹配，收集结果并返回
         for py_file in sorted(py_files):
             tree, source = _parse_file(py_file)
             if tree is None:
@@ -327,6 +336,7 @@ class SemanticSearchTool(Tool):
     # ------------------------------------------------------------------
 
     def _get_context(self, args: dict) -> ToolObservation:
+        '''返回某行所在函数/类的完整代码块。'''
         path_str = args.get("path", "")
         line_1based = args.get("line")
 

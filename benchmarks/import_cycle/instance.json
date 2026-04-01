@@ -1,0 +1,7 @@
+{
+  "name": "import_cycle",
+  "description": "models.py imports services.py and services.py imports models.py, creating a circular import that raises ImportError.",
+  "source": "Migrated from an earlier multi-file demo scenario",
+  "target_paths": ["models.py", "services.py"],
+  "test_command": "python test_import_cycle.py"
+}

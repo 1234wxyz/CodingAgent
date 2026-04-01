@@ -1,0 +1,7 @@
+{
+  "name": "trailing_window",
+  "description": "trailing_window(items, size) should return exactly the last `size` items, not `size + 1`.",
+  "source": "Migrated from an earlier slicing-logic demo scenario",
+  "target_paths": ["windowing.py"],
+  "test_command": "python test_trailing_window.py"
+}

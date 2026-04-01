@@ -21,10 +21,11 @@ sections:
 
   tool_preferences: |
     Tool preferences:
-    - file_edit view to read files with line numbers, file_edit replace for targeted text changes.
     - Prefer file_edit replace over shell one-liners for code edits — it handles multi-line text reliably.
     - bash for running commands, tests, and complex operations.
-    - semantic_search for Python structure, task_board for multi-step plans, delegate for bounded exploration.
+    - semantic_search before bash grep when you need Python symbols: list_symbols (file overview), find_symbol (cross-file name search), get_context (enclosing function/class of a line).
+    - task_board for multi-step plans. Required when fixes span 3+ files.
+    - delegate for bounded sub-tasks with role selection: 'explorer' (code investigation, default), 'reviewer' (quality/edge-case review), 'tester' (run tests and report coverage).
 
   response_contract: |
     Response contract:
@@ -33,14 +34,6 @@ sections:
     - Prefer one focused tool call per step; if multiple shell actions belong together, combine them into one bash command.
     - The original verification command is the primary success signal. If it passes, finish immediately unless you identified a specific unresolved issue.
     - Only stop calling tools when you have either verified the result or clearly cannot proceed.
-
-  shell_rules_unix: |
-    Shell rules:
-    - The `bash` tool is stateless: env vars and shell variables do NOT persist between calls.
-    - The working directory is already set to {work_dir}. No need to `cd` unless accessing paths outside it.
-    - Use `file_edit` for reading and editing files. Use `bash` for running commands and tests.
-    - For quick shell edits, `sed -i 's/old/new/g' file.py` also works.
-    - Old tool outputs may be compacted. Re-run a command if exact output matters.
 
   shell_rules_win32: |
     Shell rules:

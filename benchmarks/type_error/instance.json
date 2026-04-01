@@ -1,0 +1,7 @@
+{
+  "name": "type_error",
+  "description": "format_user_greeting('Alice', 30) raises TypeError because age is an int but the function concatenates it with strings.",
+  "source": "Migrated from an earlier type-handling demo scenario",
+  "target_paths": ["formatter.py"],
+  "test_command": "python test_type_error.py"
+}
