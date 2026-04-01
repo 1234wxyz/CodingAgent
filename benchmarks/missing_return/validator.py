@@ -2,12 +2,10 @@ def classify_temperature(temp):
     """Classify temperature into categories."""
     if temp < 0:
         return "freezing"
-    elif temp < 15:
+    if temp < 15:
         return "cold"
-    elif temp < 25:
+    if temp < 25:
         return "comfortable"
-    elif temp < 35:
-        # Missing return statement
+    if temp < 35:
         "hot"
-    else:
-        return "extreme"
+    return "extreme"

@@ -20,7 +20,7 @@ def test_task_board_create_and_get(tmp_path):
     assert json.loads(fetched.output)["id"] == payload["id"]
 
 
-def test_task_board_dependencies_are_bidirectional(tmp_path):
+def test_task_board_blocked_by(tmp_path):
     tool = TaskBoardTool(tasks_dir=tmp_path / ".tasks")
     first = json.loads(tool.execute({"command": "create", "subject": "Step 1"}).output)
     second = json.loads(tool.execute({"command": "create", "subject": "Step 2"}).output)
@@ -28,8 +28,8 @@ def test_task_board_dependencies_are_bidirectional(tmp_path):
     updated = tool.execute(
         {
             "command": "update",
-            "task_id": first["id"],
-            "add_blocks": [second["id"]],
+            "task_id": second["id"],
+            "add_blocked_by": [first["id"]],
         }
     )
 
@@ -45,8 +45,8 @@ def test_task_board_completed_task_unblocks_dependents(tmp_path):
     tool.execute(
         {
             "command": "update",
-            "task_id": first["id"],
-            "add_blocks": [second["id"]],
+            "task_id": second["id"],
+            "add_blocked_by": [first["id"]],
         }
     )
 
@@ -69,8 +69,8 @@ def test_task_board_ready_lists_only_unblocked_tasks(tmp_path):
     tool.execute(
         {
             "command": "update",
-            "task_id": first["id"],
-            "add_blocks": [second["id"]],
+            "task_id": second["id"],
+            "add_blocked_by": [first["id"]],
         }
     )
 

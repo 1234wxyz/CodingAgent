@@ -21,25 +21,23 @@ _OUTPUT_MAX = 10_000  # 截断长输出，避免上下文爆炸
 def _build_clean_env() -> dict[str, str]:
     """Build a subprocess env that suppresses pagers and progress bars.
 
-    Cross-platform: only sets PAGER/MANPAGER on Unix where ``cat`` exists.
     """
     env = dict(os.environ)
     # Universal overrides (safe on all platforms)
     env.update({
-        "PIP_PROGRESS_BAR": "off",
-        "TQDM_DISABLE": "1",
-        "NO_COLOR": "1",
+        "PIP_PROGRESS_BAR": "off", # 不要 pip 进度条，避免输出污染
+        "TQDM_DISABLE": "1", # 不要 tqdm 进度条，避免输出污染
+        "NO_COLOR": "1", # 禁止彩色输出
     })
     if sys.platform == "win32":
-        # git-for-windows respects GIT_PAGER; empty string disables paging.
-        env["GIT_PAGER"] = ""
-    else:
-        env.update({
-            "PAGER": "cat",
-            "GIT_PAGER": "cat",
-            "MANPAGER": "cat",
-            "LESS": "-FRX",
-        })
+        env["GIT_PAGER"] = "" # 禁用 g 分页器
+    # else:  # Unix-like: use cat to disable all pagers
+    #     env.update({
+    #         "PAGER": "cat",
+    #         "GIT_PAGER": "cat",
+    #         "MANPAGER": "cat",
+    #         "LESS": "-FRX",
+    #     })
     return env
 
 
@@ -94,8 +92,8 @@ class BashTool(Tool):
             result = subprocess.run(
                 command,
                 shell=True,
-                capture_output=True,
-                text=True,
+                capture_output=True, # 捕获 stdout 和 stderr
+                text=True, 
                 timeout=60,
                 cwd=self._work_dir,
                 env=_build_clean_env(),
@@ -119,7 +117,7 @@ class BashTool(Tool):
                 "redirect to a file and search it, or use grep to filter.\n"
                 "</warning>\n"
                 + combined[-half:]
-            )
+            ) # 对于过长输出，保留前后各一半，并插入警告提示
 
         return ToolObservation(
             output=combined,

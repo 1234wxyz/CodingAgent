@@ -176,6 +176,7 @@ class StreamingModelWrapper:
         self._ui = ui
 
     def query(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        # 如果配置了FallbackModel，则直接使用query()，避免不必要的错误和回退
         if not hasattr(self._model, "query_stream"):
             return self._model.query(messages)
         has_content = False
@@ -350,7 +351,7 @@ class LocalCodeAssistantApp:
         messages.append({"role": "user", "content": user_text})
 
         trajectory_path = self._next_trajectory_path()
-        self.agent.config.trajectory_path = trajectory_path
+        self.agent.config.trajectory_path = trajectory_path # Update trajectory path for this turn
         result = self.agent.run(messages)
         return list(self.agent.messages), result, trajectory_path
 
@@ -388,7 +389,7 @@ def main() -> int:
             ui.print_error(f"Run failed: {e}")
             return 1
         ui.print_status(result, trajectory_path)
-        if result.get("final_content"):
+        if not config.streaming and result.get("final_content"):
             ui.print_assistant(result["final_content"])
         return 0 if result.get("status") == "Submitted" else 1
 
@@ -415,9 +416,9 @@ def main() -> int:
             continue
 
         ui.print_status(result, trajectory_path)
-        if result.get("final_content"):
+        if not config.streaming and result.get("final_content"):
             ui.print_assistant(result["final_content"])
-        else:
+        elif not config.streaming:
             ui.print_error("No assistant summary was produced.")
 
 

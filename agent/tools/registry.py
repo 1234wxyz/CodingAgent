@@ -35,7 +35,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
-
+    # 映射工具名称到工具实例
     def register(self, tool: Tool) -> None:
         """注册工具。同名工具会覆盖旧的（以最后一次注册为准）。"""
         if tool.name in self._tools:
@@ -59,6 +59,12 @@ class ToolRegistry:
         """返回所有已注册工具的列表（顺序为注册顺序）。"""
         return list(self._tools.values())
 
+    """
+    [
+    {"type": "function", "function": {"name": "bash", "parameters": {...}}},
+    {"type": "function", "function": {"name": "file_edit", "parameters": {...}}},
+    ]
+    """
     def get_schemas(self) -> list[dict[str, Any]]:
         """返回所有工具的 litellm/OpenAI schema 列表。
 
@@ -77,14 +83,14 @@ class ToolRegistry:
         工具内部异常同样捕获并返回错误字符串。
         """
         try:
-            tool = self.get(name)
+            tool = self.get(name) # dispatch
         except KeyError as e:
             logger.warning("Tool lookup failed: %s", e)
             return str(ToolObservation(output="", success=False, error=str(e)))
 
         try:
             obs = tool.execute(arguments)
-        except Exception as e:
+        except Exception as e:  # 捕获所有移除，返回错误信息，而不是raise
             logger.warning("Tool %r raised an exception: %s", name, e)
             obs = ToolObservation(output="", success=False, error=f"Unexpected error: {e}")
 

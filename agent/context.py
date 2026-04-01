@@ -3,11 +3,7 @@ agent/context.py -- system prompt assembly and reusable context helpers.
 
 Provides:
   - ContextBuilder: compose a system prompt from sections + inject AGENTS.md / CLAUDE.md
-  - build_local_code_assistant_prompt(): runtime prompt for the local coding assistant
-  - truncate_output(): keep head/tail for long tool output
-  - estimate_tokens(): cheap message-size heuristic
   - micro_compact_tool_messages(): shrink old tool results in-place-friendly form
-  - archive_messages(): persist full message history before summarization
   - condense_history(): summarize older history with an LLM while keeping the tail
 """
 
@@ -28,11 +24,14 @@ _TRUNCATE_HEAD = 5_000
 _TRUNCATE_TAIL = 5_000
 
 _CONDENSE_SYSTEM = (
-    "You are a concise summarizer. "
-    "The user will provide a sequence of conversation messages. "
-    "Summarize them into a single compact assistant message that preserves "
-    "completed work, current state, key files, pending risks, task status, "
-    "and anything needed to continue safely."
+    "Summarize the conversation into a structured status report:\n"
+    "1. GOAL: What the user asked for\n"
+    "2. COMPLETED: What has been done (files modified, tests passed)\n"
+    "3. IN PROGRESS: Current step and its state\n"
+    "4. BLOCKED/RISKS: Any issues or concerns\n"
+    "5. KEY FILES: File paths that were read or modified\n"
+    "6. PENDING: What still needs to be done\n"
+    "Be concise but preserve all actionable details."
 )
 
 
@@ -52,7 +51,7 @@ class ContextBuilder:
             self._sections.append(text.strip())
         return self
 
-    @classmethod
+    @classmethod # 类方法封装了实例化类的逻辑，从yaml文件创建 ContextBuilder 对象。
     def from_yaml(
         cls,
         yaml_path: str | Path,
@@ -76,16 +75,11 @@ class ContextBuilder:
         work_dir_str = str(Path(work_dir).resolve()) if work_dir else "."
         builder = cls(work_dir=work_dir)
 
-        platform = sys.platform  # "win32" or "linux"/"darwin"
         sections = data.get("sections", {})
         for name, text in sections.items():
-            # Skip platform-mismatched shell_rules variants
-            if name == "shell_rules_unix" and platform == "win32":
-                continue
-            if name == "shell_rules_win32" and platform != "win32":
-                continue
+
             if text and isinstance(text, str):
-                rendered = text.replace("{work_dir}", work_dir_str)
+                rendered = text.replace("{work_dir}", work_dir_str) # 没有占位符就透传
                 builder.add_section(rendered)
 
         if sandbox_summary.strip():
@@ -94,13 +88,15 @@ class ContextBuilder:
         return builder
 
     def build(self) -> str:
-        parts: list[str] = list(self._sections)
+        ''' Assemble the final system prompt, including injected context from files if available.'''
+        parts: list[str] = list(self._sections) # 深复制一份，避免修改原始列表
         injected = self._load_context_file()
         if injected:
             parts.append(injected)
         return "\n\n".join(parts)
 
     def _load_context_file(self) -> str:
+        ''' Check for AGENTS.md or CLAUDE.md in the work directory and inject its content if found.'''
         if self._work_dir is None:
             return ""
 
@@ -153,7 +149,11 @@ def build_local_code_assistant_prompt(
         "- file_edit view to read files with line numbers, file_edit replace for targeted text changes.\n"
         "- Prefer file_edit replace over shell one-liners for code edits — it handles multi-line text reliably.\n"
         "- bash for running commands, tests, and complex operations.\n"
-        "- semantic_search for Python structure, task_board for multi-step plans, delegate for bounded exploration."
+        "- semantic_search before bash grep when you need Python symbols: list_symbols (file overview), "
+        "find_symbol (cross-file name search), get_context (enclosing function/class of a line).\n"
+        "- task_board for multi-step plans.\n"
+        "- delegate for bounded sub-tasks with role selection: 'explorer' (code investigation, default), "
+        "'reviewer' (quality/edge-case review), 'tester' (run tests and report coverage)."
     )
     builder.add_section(
         "Response contract:\n"
@@ -173,15 +173,6 @@ def build_local_code_assistant_prompt(
             "- List files: `dir /b` (flat) or `dir /s /b *.py` (recursive .py files).\n"
             "- Search text in files: `findstr /s /n \"pattern\" *.py` (not grep).\n"
             "- Do NOT use `sed -i`, `grep`, `find . -name`, `xargs`, heredocs (`cat > file <<'EOF'`), or other Unix-specific syntax.\n"
-            "- Old tool outputs may be compacted. Re-run a command if exact output matters."
-        )
-    else:
-        builder.add_section(
-            "Shell rules:\n"
-            "- The `bash` tool is stateless: env vars and shell variables do NOT persist between calls.\n"
-            f"- The working directory is already set to {work_dir}. No need to `cd` unless accessing paths outside it.\n"
-            "- Use `file_edit` for reading and editing files. Use `bash` for running commands and tests.\n"
-            "- For quick shell edits, `sed -i 's/old/new/g' file.py` also works.\n"
             "- Old tool outputs may be compacted. Re-run a command if exact output matters."
         )
     builder.add_section(
@@ -204,7 +195,8 @@ def truncate_output(
     head: int = _TRUNCATE_HEAD,
     tail: int = _TRUNCATE_TAIL,
 ) -> str:
-    """Trim long text to head + tail with an omission marker."""
+    """Trim long text to head + tail with an omission marker.
+        For UI display of long tool outputs."""
     if len(text) <= max_chars:
         return text
 
@@ -216,7 +208,7 @@ def truncate_output(
 def estimate_tokens(messages: list[dict[str, Any]]) -> int:
     """Cheap token estimate using serialized character count."""
     try:
-        payload = json.dumps(messages, ensure_ascii=False, default=str)
+        payload = json.dumps(messages, ensure_ascii=False, default=str) # 以 JSON 格式序列化消息列表，得到一个字符串表示
     except Exception:
         payload = str(messages)
     return max(1, len(payload) // 4)
@@ -231,17 +223,28 @@ def micro_compact_tool_messages(
     if keep_recent < 0:
         raise ValueError("keep_recent must be >= 0")
 
-    compacted = copy.deepcopy(messages)
-    tool_name_map = _extract_tool_name_map(compacted)
-
+    # --- 轻量预扫描：在原始列表上判断是否有需要 compact 的消息 ---
     tool_indexes = [
-        idx for idx, msg in enumerate(compacted)
+        idx for idx, msg in enumerate(messages)
         if msg.get("role") == "tool" and isinstance(msg.get("content"), str)
     ]
     if len(tool_indexes) <= keep_recent:
-        return compacted
+        return messages  # 无需 compact，直接返回原列表，跳过 deepcopy
 
-    for idx in tool_indexes[:-keep_recent]:
+    candidates = tool_indexes[:-keep_recent] if keep_recent > 0 else tool_indexes
+    needs_compact = any(
+        len(messages[idx].get("content") or "") > compact_above_chars
+        for idx in candidates
+    )
+    if not needs_compact:
+        return messages  # 候选消息均未超长，跳过 deepcopy
+
+    # --- 需要修改，执行 deepcopy ---
+    compacted = copy.deepcopy(messages)
+    # 因为工具调用消息可能没有直接的工具名称，所以构建 tool_call_id 到工具名称的映射
+    tool_name_map = _extract_tool_name_map(compacted)
+
+    for idx in candidates:
         msg = compacted[idx]
         content = msg.get("content") or ""
         if len(content) <= compact_above_chars:
@@ -317,6 +320,7 @@ def condense_history(
     }
 
     result: list[dict[str, Any]] = []
+    # 拼接系统消息、总结消息和要保留的最近消息，形成新的消息列表
     if system_msg:
         result.append(system_msg)
     result.append(summary)
@@ -325,6 +329,7 @@ def condense_history(
 
 
 def _extract_tool_name_map(messages: list[dict[str, Any]]) -> dict[str, str]:
+    '''Build a mapping from tool_call_id to tool name for better compaction placeholders.'''
     mapping: dict[str, str] = {}
     for msg in messages:
         if msg.get("role") != "assistant":
@@ -341,10 +346,6 @@ def _extract_tool_name_map(messages: list[dict[str, Any]]) -> dict[str, str]:
             elif "function" in tool_call:
                 mapping[tool_call_id] = tool_call["function"].get("name", "tool")
 
-        for tool_call in msg.get("_normalized_tool_calls") or []:
-            if isinstance(tool_call, dict) and tool_call.get("id"):
-                mapping[tool_call["id"]] = tool_call.get("name", "tool")
-
     return mapping
 
 
@@ -355,9 +356,9 @@ def _format_messages_for_condensing(messages: list[dict[str, Any]]) -> str:
         content = msg.get("content") or ""
         tool_calls = msg.get("_normalized_tool_calls") or msg.get("tool_calls") or []
 
-        if role == "tool":
+        if role == "tool": # 工具输出
             lines.append(f"[tool result] {truncate_output(str(content), max_chars=800)}")
-        elif tool_calls:
+        elif tool_calls: # 调用工具
             tool_names = [
                 tc.get("name") or tc.get("function", {}).get("name", "?")
                 for tc in tool_calls
@@ -366,7 +367,7 @@ def _format_messages_for_condensing(messages: list[dict[str, Any]]) -> str:
             lines.append(f"[assistant] called tools: {tool_names}")
             if content:
                 lines.append(f"  content: {truncate_output(str(content), max_chars=400)}")
-        else:
+        else:  # 普通消息
             lines.append(f"[{role}] {truncate_output(str(content), max_chars=800)}")
 
     return "\n".join(lines)

@@ -1,0 +1,6 @@
+{
+  "name": "path_normalization",
+  "description": "Path joining should normalize redundant slashes, but the current implementation duplicates separators when inputs already contain '/'.",
+  "target_paths": ["paths.py"],
+  "test_command": "python test_path_normalization.py"
+}

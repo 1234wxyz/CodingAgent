@@ -1,0 +1,6 @@
+{
+  "name": "free_shipping_threshold",
+  "description": "Orders at the free-shipping threshold should not be charged shipping, but the threshold check uses > instead of >=.",
+  "target_paths": ["shipping.py", "checkout.py"],
+  "test_command": "python test_free_shipping_threshold.py"
+}

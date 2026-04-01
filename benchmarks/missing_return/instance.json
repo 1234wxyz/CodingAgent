@@ -1,0 +1,7 @@
+{
+  "name": "missing_return",
+  "description": "classify_temperature(30) returns None instead of 'hot' because the 25-35 branch is missing a return statement.",
+  "source": "Migrated from an earlier control-flow demo scenario",
+  "target_paths": ["validator.py"],
+  "test_command": "python test_missing_return.py"
+}

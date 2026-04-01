@@ -4,7 +4,7 @@
 
 # 🤖 CodingAgent
 
-**从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、多 Agent 协作与评测体系。**
+**基于 Harness 思想从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、多 Agent 协作与评测体系。**
 
 [![Stars](https://img.shields.io/github/stars/1234wxyz/CodingAgent?style=flat&logo=github&label=Stars)](https://github.com/1234wxyz/CodingAgent/stargazers)
 [![Forks](https://img.shields.io/github/forks/1234wxyz/CodingAgent?style=flat&logo=github&label=Forks)](https://github.com/1234wxyz/CodingAgent/network/members)
@@ -18,7 +18,7 @@
 
 ## 🎯 项目介绍
 
-一个从零实现的可评测、可观测的 Python Coding Agent。通过 middleware 分离安全与上下文管理，通过 tool-calling 扩展能力，支持角色化多 Agent 协作、持久化任务追踪与 prompt 版本化评测。
+一个从零实现的可评测、可观测的 Python Coding Agent。基于 Harness 思想设计，通过 middleware 实现安全管理与上下文管理，通过 tool-calling 扩展能力，支持角色化多 Agent 协作、持久化任务追踪与 prompt 版本化评测。
 
 ---
 
@@ -59,7 +59,7 @@ Trajectory JSONL + 终端 Dashboard
 <td align="center">
 
 **🧪 内置评测体系**<br>
-6 场景 + 5 基准 + A/B 对比
+12 个 benchmark + A/B 对比
 
 </td>
 </tr>
@@ -67,7 +67,11 @@ Trajectory JSONL + 终端 Dashboard
 
 ---
 
-<p align="center"><img src="assets/demo.gif" width="680" alt="CodingAgent Demo"></p>
+<p align="center">
+  <video src="assets/demo_video.MP4" width="680" controls>
+    浏览器不支持视频标签，请直接查看 <a href="assets/demo_video.MP4">demo_video.MP4</a>
+  </video>
+</p>
 
 ---
 
@@ -92,7 +96,7 @@ python main.py                   # 交互模式（流式输出）
 单次任务模式：
 
 ```bash
-python main.py --task "修复 calculator.py 中的 ZeroDivisionError" --work-dir ./demo/bug_scenarios/zero_division
+python main.py --task "修复 calculator.py 中的 ZeroDivisionError" --work-dir ./benchmarks/zero_division
 ```
 
 ---
@@ -142,7 +146,6 @@ agent/                          # Agent 核心
 
 scripts/                        # 评测与观测工具
 ├── benchmark.py                # Benchmark 评测（pass@1 记分卡）
-├── run_scenarios.py            # Demo 场景自动验证
 ├── dashboard.py                # 终端 ASCII Dashboard
 ├── analyze.py                  # Trajectory 统计分析
 ├── compare_prompts.py          # Prompt 版本 A/B 对比
@@ -152,8 +155,7 @@ prompts/                        # 版本化 System Prompt（YAML）
 ├── v1.yaml                     # 标准工作流（5 步 + 可选扩展检查）
 └── v2.yaml                     # 严格精简变体
 
-demo/bug_scenarios/             # 6 个 Bug 修复场景（含 verify.py）
-benchmarks/                     # 5 个 Benchmark 实例（含自动评测）
+benchmarks/                     # 12 个 Benchmark 实例（含自动评测）
 tests/                          # 115 个离线测试（无需 API Key）
 ```
 
@@ -185,22 +187,25 @@ Agent 拥有三类互补的代码操作工具：`bash` 执行任意 Shell 命令
 
 | 类型 | 名称 | 描述 |
 |------|------|------|
-| 场景 | `zero_division` | `average([])` 应返回 0.0 而非抛异常 |
-| 场景 | `trailing_window` | 滑动窗口 off-by-one |
-| 场景 | `loyalty_checkout` | 未知客户等级折扣逻辑 |
-| 场景 | `type_error` | `int + str` 类型拼接错误 |
-| 场景 | `import_cycle` | 多文件循环导入 |
-| 场景 | `missing_return` | 函数缺少 return |
+| 基准 | `zero_division` | `average([])` 应返回 0.0 而非抛异常 |
+| 基准 | `trailing_window` | 滑动窗口 off-by-one |
+| 基准 | `type_error` | `int + str` 类型拼接错误 |
+| 基准 | `import_cycle` | 多文件循环导入 |
+| 基准 | `missing_return` | 函数缺少 return |
 | 基准 | `dict_merge_overwrite` | 浅拷贝导致配置覆盖 |
 | 基准 | `csv_quoting` | 字段引号缺失 |
 | 基准 | `datetime_edge` | 日期计算 off-by-one |
 | 基准 | `regex_escape` | 正则特殊字符未转义 |
 | 基准 | `recursion_depth` | 深层输入触发 RecursionError |
+| 基准 | `free_shipping_threshold` | 免邮阈值边界判断错误 |
+| 基准 | `path_normalization` | 路径拼接重复斜杠 |
+
+<p align="center"><img src="assets/dashboard.png" width="680" alt="Trajectory Dashboard"></p>
 
 ```bash
 pytest tests/ -v                       # 115 个离线测试
-python scripts/run_scenarios.py        # 6 个场景端到端验证
-python scripts/benchmark.py            # 5 实例基准评分卡
+python scripts/benchmark.py            # 12 实例基准评分卡
+python scripts/compare_prompts.py v1 v2 --dry-run  # Benchmark A/B 预览
 python scripts/dashboard.py trajectories/  # 终端 Dashboard
 ```
 
@@ -215,7 +220,7 @@ python scripts/dashboard.py trajectories/  # 终端 Dashboard
 | 离线测试 | 115 |
 | 工具 | 5（bash / semantic_search / task_board / delegate / file_edit） |
 | 中间件 | 3（safety / sandbox / compaction） |
-| 评测实例 | 6 场景 + 5 基准 |
+| 评测实例 | 12 个 benchmark |
 | Prompt 版本 | 2（YAML，支持 A/B 对比） |
 
 ---
