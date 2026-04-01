@@ -64,11 +64,7 @@ Trajectory JSONL + 终端 Dashboard
 
 ---
 
-<p align="center">
-  <video src="assets/demo.MP4" width="680" controls>
-    浏览器不支持视频标签，请直接查看 <a href="assets/demo.MP4">demo.MP4</a>
-  </video>
-</p>
+![Demo](assets/demo.gif)
 
 ---
 
@@ -100,7 +96,7 @@ python main.py --task "修复 calculator.py 中的 ZeroDivisionError" --work-dir
 
 ## 🏗️ 架构总览
 
-<p align="center"><img src="https://raw.githubusercontent.com/1234wxyz/CodingAgent/main/assets/architecture.svg" width="680" alt="Architecture"></p>
+![Architecture](assets/architecture.svg)
 
 
 ### 核心模块职责
@@ -207,9 +203,6 @@ python scripts/dashboard.py trajectories/  # 终端 Dashboard
 ---
 
 ## 📊 项目数据
-
-<p align="center"><img src="assets/dashboard.png" width="680" alt="Trajectory Dashboard"></p>
-
 | 指标 | 数值 |
 |------|------|
 | 核心循环 | ~340 行 |
