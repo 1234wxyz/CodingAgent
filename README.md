@@ -1,7 +1,7 @@
 
 <div align="center">
   <h1>🤖 CodingAgent</h1>
-  <p><strong>基于 Harness 思想从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、多 Agent 协作与评测体系。</strong></p>
+  <p><strong>基于 Harness 思想从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、上下文管理、多 Agent 协作与评测体系。</strong></p>
   <p>
     <a href="https://github.com/1234wxyz/CodingAgent/stargazers"><img src="https://img.shields.io/github/stars/1234wxyz/CodingAgent?style=flat&logo=github&label=Stars" alt="Stars"></a>
     <a href="https://github.com/1234wxyz/CodingAgent/network/members"><img src="https://img.shields.io/github/forks/1234wxyz/CodingAgent?style=flat&logo=github&label=Forks" alt="Forks"></a>
