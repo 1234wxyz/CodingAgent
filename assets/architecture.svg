@@ -6,7 +6,7 @@
 </defs>
 <rect width="820" height="670" fill="#FFFFFF" rx="0"/>
 <rect x="30" y="30" width="760" height="62" rx="10" fill="#F0F9FF" stroke="#BAE6FD" stroke-width="1.5" opacity="1"/>
-<text x="410.0" y="56" font-size="15" font-weight="600" fill="#3B82F6" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">CLI & Interaction</text>
+<text x="410.0" y="56" font-size="15" font-weight="600" fill="#3B82F6" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">CLI &amp; Interaction</text>
 <text x="410.0" y="76" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Interactive Mode · Single-shot Mode · Streaming Output</text>
 <line x1="410.0" y1="98" x2="410.0" y2="118" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="30" y="124" width="760" height="62" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.5" opacity="1"/>
@@ -14,7 +14,7 @@
 <text x="410.0" y="170" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Thin Loop (~340 lines) · Query → Dispatch → Trajectory · Middleware Hooks</text>
 <line x1="410.0" y1="192" x2="410.0" y2="212" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="30" y="218" width="230" height="140" rx="10" fill="#F9FAFB" stroke="#D1D5DB" stroke-width="1.5" opacity="1"/>
-<text x="145.0" y="242" font-size="14" font-weight="600" fill="#111827" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Prompt & Context</text>
+<text x="145.0" y="242" font-size="14" font-weight="600" fill="#111827" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Prompt &amp; Context</text>
 <text x="145.0" y="262" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">YAML Versioning</text>
 <text x="145.0" y="280" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Platform-aware Rules</text>
 <text x="145.0" y="298" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Token Estimation</text>
@@ -42,14 +42,14 @@
 <text x="695.0" y="332" font-size="9" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Schema Dispatch</text>
 <line x1="410.0" y1="364" x2="410.0" y2="384" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="30" y="390" width="760" height="62" rx="10" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1.5" opacity="1"/>
-<text x="410.0" y="416" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Safety & Middleware</text>
+<text x="410.0" y="416" font-size="15" font-weight="600" fill="#92400E" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Safety &amp; Middleware</text>
 <text x="410.0" y="436" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Bash Guard (12 rules) · Sandbox Detection · Context Compaction · Workspace Boundary</text>
 <line x1="410.0" y1="458" x2="410.0" y2="478" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="30" y="484" width="760" height="62" rx="10" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.5" opacity="1"/>
 <text x="410.0" y="510" font-size="15" font-weight="600" fill="#5B21B6" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">LLM Adapter (litellm)</text>
-<text x="410.0" y="530" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Retry & Backoff · Model Fallback Chain · Streaming · Cost Tracking</text>
+<text x="410.0" y="530" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Retry &amp; Backoff · Model Fallback Chain · Streaming · Cost Tracking</text>
 <line x1="410.0" y1="552" x2="410.0" y2="572" stroke="#D1D5DB" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 <rect x="30" y="578" width="760" height="62" rx="10" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="1.5" opacity="1"/>
-<text x="410.0" y="604" font-size="15" font-weight="600" fill="#3730A3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Observability & Evaluation</text>
+<text x="410.0" y="604" font-size="15" font-weight="600" fill="#3730A3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Observability &amp; Evaluation</text>
 <text x="410.0" y="624" font-size="11" font-weight="400" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Trajectory JSONL · Terminal Dashboard · Benchmark Harness · Prompt A/B</text>
 </svg>

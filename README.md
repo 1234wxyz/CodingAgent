@@ -1,14 +1,14 @@
 
-# 🤖 CodingAgent
-
-**基于 Harness 思想从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、多 Agent 协作与评测体系。**
-
-[![Stars](https://img.shields.io/github/stars/1234wxyz/CodingAgent?style=flat&logo=github&label=Stars)](https://github.com/1234wxyz/CodingAgent/stargazers)
-[![Forks](https://img.shields.io/github/forks/1234wxyz/CodingAgent?style=flat&logo=github&label=Forks)](https://github.com/1234wxyz/CodingAgent/network/members)
-[![Python](https://img.shields.io/badge/Python-≥3.11-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/github/license/1234wxyz/CodingAgent?style=flat&label=License)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-115%20offline-brightgreen?style=flat)](tests/)
-
+<div align="center">
+  <h1>🤖 CodingAgent</h1>
+  <p><strong>基于 Harness 思想从零构建的 Python Coding Agent，核心循环仅 ~340 行，具备完整的工具调用、安全中间件、多 Agent 协作与评测体系。</strong></p>
+  <p>
+    <a href="https://github.com/1234wxyz/CodingAgent/stargazers"><img src="https://img.shields.io/github/stars/1234wxyz/CodingAgent?style=flat&logo=github&label=Stars" alt="Stars"></a>
+    <a href="https://github.com/1234wxyz/CodingAgent/network/members"><img src="https://img.shields.io/github/forks/1234wxyz/CodingAgent?style=flat&logo=github&label=Forks" alt="Forks"></a>
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB?style=flat&logo=python&logoColor=white" alt="Python"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/1234wxyz/CodingAgent?style=flat&label=License" alt="License"></a>
+    <a href="tests/"><img src="https://img.shields.io/badge/Tests-115%20offline-brightgreen?style=flat" alt="Tests"></a>
+  </p>
 </div>
 
 ---
@@ -96,7 +96,9 @@ python main.py --task "修复 calculator.py 中的 ZeroDivisionError" --work-dir
 
 ## 🏗️ 架构总览
 
-![Architecture](assets/architecture.svg)
+<p align="center">
+  <img src="assets/architecture.png" width="680" alt="Architecture">
+</p>
 
 
 ### 核心模块职责

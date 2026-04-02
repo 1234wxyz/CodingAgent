@@ -6,6 +6,7 @@ Usage:
     -> writes assets/architecture.svg
 """
 
+from html import escape
 from pathlib import Path
 
 # ── Layout constants ──────────────────────────────────────────────
@@ -36,6 +37,7 @@ def rect(x, y, w, h, fill=GRAY_BG, stroke=BORDER, rx=RX, opacity=1):
     return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}" fill="{fill}" stroke="{stroke}" stroke-width="1.5" opacity="{opacity}"/>'
 
 def text(x, y, content, size=14, weight="600", fill=TEXT, anchor="middle"):
+    content = escape(content)
     return f'<text x="{x}" y="{y}" font-size="{size}" font-weight="{weight}" fill="{fill}" text-anchor="{anchor}" font-family="-apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif">{content}</text>'
 
 def sub(x, y, content):
