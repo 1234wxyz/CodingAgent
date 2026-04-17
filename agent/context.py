@@ -241,7 +241,7 @@ def micro_compact_tool_messages(
 
     # --- 需要修改，执行 deepcopy ---
     compacted = copy.deepcopy(messages)
-    # 因为工具调用消息可能没有直接的工具名称，所以构建 tool_call_id 到工具名称的映射
+    # 因为工具调用消息没有直接的工具名称，所以构建 tool_call_id 到工具名称的映射
     tool_name_map = _extract_tool_name_map(compacted)
 
     for idx in candidates:

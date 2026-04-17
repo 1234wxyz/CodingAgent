@@ -25,11 +25,11 @@ from dotenv import load_dotenv
 
 from agent.context import ContextBuilder, build_local_code_assistant_prompt, truncate_output
 from agent.core import Agent
+from agent.encoding import ensure_utf8_stdio
 from agent.middleware import (
     BashSafetyMiddleware,
     ContextCompactionMiddleware,
     ReflectionMiddleware,
-    SandboxAwarenessMiddleware,
     detect_sandbox,
 )
 from agent.tools.bash import BashTool
@@ -59,6 +59,9 @@ class AppConfig:
 
     @classmethod
     def from_env(cls, work_dir: str | Path | None = None) -> "AppConfig":
+        # Load .env before reading process env so CLI defaults work without
+        # requiring callers to manually source variables first.
+        load_dotenv(override=False)
         work_dir_path = Path(work_dir or Path.cwd()).resolve()
         model_name = os.getenv("MODEL_NAME", "deepseek/deepseek-chat")
         return cls(
@@ -134,6 +137,32 @@ class TerminalUI:
 
     def print_error(self, message: str) -> None:
         print(f"{Ansi.red}{message}{Ansi.reset}")
+
+
+def configure_file_logging(log_path: Path) -> None:
+    """Write repo logs to a file without changing terminal output behavior."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    agent_logger = logging.getLogger("agent")
+    for handler in agent_logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            base = getattr(handler, "baseFilename", "")
+            if base and Path(base) == log_path:
+                return
+
+    level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    agent_logger.addHandler(handler)
+    agent_logger.setLevel(level)
+    agent_logger.propagate = False
 
 
 class TracingToolExecutor:
@@ -311,7 +340,6 @@ class LocalCodeAssistantApp:
         tool_executor = TracingToolExecutor(guarded_executor, ui=ui)
 
         middlewares: list[Any] = [
-            SandboxAwarenessMiddleware(sandbox),
             ContextCompactionMiddleware(
                 summary_model=summary_model,
                 transcript_dir=config.transcript_dir,
@@ -366,12 +394,15 @@ class LocalCodeAssistantApp:
 def main() -> int:
     import argparse
 
+    ensure_utf8_stdio()
+
     parser = argparse.ArgumentParser(description="Local coding assistant")
     parser.add_argument("--task", help="Single-shot task (non-interactive mode)")
     parser.add_argument("--work-dir", help="Working directory (default: cwd)")
     args = parser.parse_args()
 
     config = AppConfig.from_env(work_dir=args.work_dir)
+    configure_file_logging(Path(__file__).resolve().parent.parent / "logs" / "agent.log")
     ui = TerminalUI()
 
     try:

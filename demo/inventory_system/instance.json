@@ -1,0 +1,7 @@
+{
+  "name": "bulk_shipping_bug",
+  "description": "Bulk discount drops order total below free-shipping threshold, but shipping still shows as free because the pre-discount subtotal is used.",
+  "source": "Interview demo scenario",
+  "target_paths": ["service.py", "shipping.py", "pricing.py"],
+  "test_command": "python test_system.py"
+}

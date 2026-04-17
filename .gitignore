@@ -6,3 +6,4 @@ __pycache__/
 trajectories/*.jsonl
 .tasks/
 .transcripts/
+logs/

@@ -1,7 +1,0 @@
-{
-  "name": "trailing_window",
-  "title": "Trailing window returns one extra item",
-  "description": "trailing_window(items, size) should return exactly the last `size` items, not `size + 1`.",
-  "target_paths": ["windowing.py"],
-  "verify_command": "python verify.py"
-}

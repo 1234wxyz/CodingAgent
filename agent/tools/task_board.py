@@ -95,7 +95,7 @@ class TaskStore:
 
     def _save(self, task: dict[str, Any]) -> None:
         self._path(task["id"]).write_text(
-            json.dumps(task, indent=2, ensure_ascii=True),
+            json.dumps(task, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
@@ -115,7 +115,7 @@ class TaskBoardTool(Tool):
         return (
             "Persistent task tracking for multi-step work. "
             "Commands: create, list, get, ready, update. "
-            "Use this when the job spans multiple meaningful steps or dependencies."
+            "Use this to create multiple tasks when the job spans multiple meaningful steps or dependencies."
         )
 
     @property
@@ -211,7 +211,7 @@ class TaskBoardTool(Tool):
 
 
 def _format_task_json(task: dict[str, Any]) -> str:
-    return json.dumps(task, indent=2, ensure_ascii=True)
+    return json.dumps(task, indent=2, ensure_ascii=False)
 
 
 def _format_task_list(tasks: list[dict[str, Any]]) -> str:

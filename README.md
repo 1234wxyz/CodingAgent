@@ -83,7 +83,7 @@ DEEPSEEK_API_KEY=your_key_here
 EOF
 
 # 3. 启动
-python main.py --work-dir ./your_repo             # 交互模式（流式输出）
+python main.py --work-dir ./your_repo                # 交互模式（流式输出）
 ```
 
 单次任务模式：

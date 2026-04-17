@@ -1,0 +1,43 @@
+{
+  "gateway_name": "interview-gateway",
+  "environment": "demo",
+  "admin_api_key": "interview-demo-key",
+  "upstreams": [
+    {
+      "service": "inventory",
+      "path_prefix": "/inventory",
+      "owner": "supply-platform",
+      "timeout_ms": 800,
+      "strip_prefix": true,
+      "mock_response": {
+        "status": "healthy",
+        "region": "cn-shanghai",
+        "latency_ms": 12
+      }
+    },
+    {
+      "service": "billing",
+      "path_prefix": "/billing",
+      "owner": "finance-platform",
+      "timeout_ms": 1200,
+      "strip_prefix": true,
+      "mock_response": {
+        "status": "healthy",
+        "currency": "CNY",
+        "pending_settlements": 3
+      }
+    },
+    {
+      "service": "shipping",
+      "path_prefix": "/shipping",
+      "owner": "logistics-platform",
+      "timeout_ms": 950,
+      "strip_prefix": false,
+      "mock_response": {
+        "status": "degraded",
+        "carrier": "east-express",
+        "queue_depth": 7
+      }
+    }
+  ]
+}

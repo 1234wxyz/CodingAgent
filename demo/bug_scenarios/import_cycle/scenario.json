@@ -1,7 +1,0 @@
-{
-  "name": "import_cycle",
-  "title": "Circular import between models and services",
-  "description": "models.py imports from services.py and services.py imports from models.py, creating a circular import that raises ImportError. Break the cycle while preserving all existing functionality.",
-  "target_paths": ["models.py", "services.py"],
-  "verify_command": "python verify.py"
-}

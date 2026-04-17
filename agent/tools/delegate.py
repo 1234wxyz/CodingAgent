@@ -91,10 +91,11 @@ class DelegateTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a self-contained sub-task to a specialized sub-agent with an optional role. "
-            "Roles: 'explorer' (default, code investigation), 'reviewer' (code review & quality check), "
-            "'tester' (test execution & coverage). "
-            "The sub-agent runs with an isolated message history and returns a text summary."
+            "Delegate a sub-task to a specialized sub-agent with an optional role. "
+            "Roles: explorer (default, codebase investigation), "
+            "reviewer (code quality & correctness review), "
+            "tester (test execution & coverage). "
+            "Always give a complete, self-contained task description."
         )
 
     @property

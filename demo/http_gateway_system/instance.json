@@ -1,0 +1,16 @@
+{
+  "name": "http_gateway_startup_failure",
+  "title": "FastAPI gateway fails during startup because request-context wiring created a dependency cycle.",
+  "description": "A multi-module HTTP gateway crashes before serving traffic. Reproduce the startup failure, trace the import/dependency chain, fix the root cause, then verify with a smoke script instead of a unit test suite.",
+  "source": "Interview demo scenario",
+  "entry_command": "python start_gateway.py",
+  "verify_command": "python smoke_check.py",
+  "target_paths": [
+    "gateway/app.py",
+    "gateway/dependencies.py",
+    "gateway/services/gateway.py",
+    "gateway/routes/admin.py",
+    "gateway/routes/proxy.py"
+  ],
+  "auto_task": "This is a multi-module FastAPI HTTP gateway incident. Reproduce the startup failure by running `python start_gateway.py`. Treat it like a real on-call investigation: inspect the startup path across modules, and if the call chain is unclear use `task_board` and `delegate` to map it before editing. Fix the root cause, then verify the gateway with `python smoke_check.py`."
+}

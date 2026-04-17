@@ -264,32 +264,6 @@ class BashSafetyMiddleware:
             return f"[WARNING: {boundary_warning}]\n{result}"
         return result
 
-
-class SandboxAwarenessMiddleware(Middleware):
-    """Inject sandbox facts into the system prompt once per agent run."""
-
-    def __init__(self, sandbox_info: SandboxInfo) -> None:
-        self._sandbox_info = sandbox_info
-
-    def pre_step(self, agent: Any) -> None:
-        if getattr(agent, "_sandbox_notice_injected", False):
-            return
-
-        notice = (
-            "[Sandbox detection]\n"
-            f"{self._sandbox_info.render()}\n"
-            "High-risk bash commands may be blocked. Re-check the environment before attempting destructive edits."
-        )
-
-        if agent.messages and agent.messages[0].get("role") == "system":
-            original = agent.messages[0].get("content") or ""
-            agent.messages[0]["content"] = original.rstrip() + "\n\n" + notice
-        else:
-            agent.messages.insert(0, {"role": "system", "content": notice})
-
-        agent._sandbox_notice_injected = True # flag to avoid reinjecting on subsequent steps
-
-
 class ContextCompactionMiddleware(Middleware):
     """Compact old tool outputs and summarize history before the next model call."""
 
