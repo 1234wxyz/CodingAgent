@@ -80,6 +80,7 @@ pip install -e ".[dev]"          # Python >= 3.11
 cat > .env <<'EOF'
 MODEL_NAME=deepseek/deepseek-chat
 DEEPSEEK_API_KEY=your_key_here
+DEEPSEEK_API_BASE=https://api.deepseek.com
 EOF
 
 # 3. 启动

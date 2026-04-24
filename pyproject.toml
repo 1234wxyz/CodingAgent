@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A minimal coding agent with LLM-backed tool use"
 requires-python = ">=3.11"
 dependencies = [
-    "litellm",
+    "litellm>=1.83.13",
     "pydantic",
     "tenacity",
     "tree-sitter==0.21.3",

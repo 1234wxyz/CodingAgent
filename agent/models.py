@@ -42,10 +42,22 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PREFIXES = ("anthropic/", "deepseek/")
+SUPPORTED_PREFIXES = ("anthropic/", "deepseek/", "openai/")
+
+# 注册 litellm 尚未内置的新模型，复用 deepseek-chat 的配置
+_BASE_MODEL = "deepseek/deepseek-chat"
+_NEW_DEEPSEEK_MODELS = [
+    "deepseek/deepseek-v4-flash",
+]
+for _model in _NEW_DEEPSEEK_MODELS:
+    if _model not in litellm.model_cost and _BASE_MODEL in litellm.model_cost:
+        litellm.model_cost[_model] = litellm.model_cost[_BASE_MODEL].copy()
 
 # Keys that LLM providers actually accept in message dicts.
 _PROVIDER_KEYS = frozenset({"role", "content", "tool_calls", "tool_call_id", "name"})
+
+# 默认开启思考模式的 DeepSeek 模型，需要显式关闭 thinking
+_DEEPSEEK_THINKING_MODELS = ("deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro")
 
 
 class ModelConfig(BaseModel):
@@ -67,9 +79,14 @@ class LLMModel:
                 f"Unsupported model: {model_name!r}. "
                 f"Model name must start with one of: {SUPPORTED_PREFIXES}"
             )
+        kwargs = dict(model_kwargs or {})
+        # DeepSeek v4 系列默认开启思考模式，暂时关闭以避免 reasoning_content 回传问题
+        if model_name in _DEEPSEEK_THINKING_MODELS:
+            kwargs.setdefault("extra_body", {})
+            kwargs["extra_body"].setdefault("thinking", {"type": "disabled"})
         self.config = ModelConfig(
             model_name=model_name,
-            model_kwargs=model_kwargs or {},
+            model_kwargs=kwargs,
             cost_tracking=cost_tracking,
         )
 
